@@ -1,0 +1,55 @@
+{
+  "name": "deskhand",
+  "version": "0.1.0",
+  "description": "MCP servers that drive live Windows desktop applications from WSL. First target: the OneNote desktop client over COM.",
+  "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "onenote",
+    "com",
+    "wsl",
+    "automation"
+  ],
+  "license": "Apache-2.0",
+  "author": "specter119",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/specter119/deskhand.git"
+  },
+  "bugs": {
+    "url": "https://github.com/specter119/deskhand/issues"
+  },
+  "homepage": "https://github.com/specter119/deskhand#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "deskhand": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src/onenote/bridge.ps1",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js',0o755)\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "biome format --write src tests",
+    "lint": "biome check src tests",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:live": "node tests/live/onenote.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
+    "typebox": "^1.4.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
