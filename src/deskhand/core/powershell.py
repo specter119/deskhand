@@ -26,10 +26,13 @@ from typing import Any
 from deskhand.core.compat import compact
 
 POWERSHELL_FALLBACK = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-CALL_TIMEOUT_S = 180.0
-STARTUP_TIMEOUT_S = 60.0
+# Clients give up on a tool call after their own timeout (Pi: 60 s by default, and it does not wait for a reply
+# after that). Startup, the temp-dir probe and the call add up to a cold first call, so the sum has to stay
+# under that: a hot call waits at most CALL_TIMEOUT_S, a cold one about that plus a few seconds of startup.
+CALL_TIMEOUT_S = 40.0
+STARTUP_TIMEOUT_S = 15.0
 IDLE_TIMEOUT_S = 1800.0
-PROBE_TIMEOUT_S = 30.0
+PROBE_TIMEOUT_S = 15.0
 EXIT_GRACE_S = 5.0
 CLOSE_GRACE_S = 2.0
 STDERR_SETTLE_S = 0.5
@@ -327,11 +330,13 @@ class PowerShellBridge:
             if applying:
                 raise BridgeError(
                     "The call timed out while a write was in flight, so whether OneNote applied it is "
-                    "unknown. Read the page again and preview before retrying.",
+                    "unknown. OneNote may be showing a sign-in or update dialog, or be hung. "
+                    "Read the page again and preview before retrying.",
                     "outcome_unknown",
                 ) from None
             raise BridgeError(
-                f"OneNote bridge failed: powershell.exe did not finish within {self._timeout:g} s",
+                f"OneNote bridge failed: powershell.exe did not finish within {self._timeout:g} s "
+                "(OneNote may be showing a sign-in or update dialog, or be hung)",
                 "bridge_failed",
             ) from None
         except _WorkerGone:

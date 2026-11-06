@@ -28,7 +28,7 @@ Upgrade with `uv tool install --reinstall git+https://github.com/specter119/desk
 Register the server with an MCP client as a stdio command:
 
 ```json
-{ "mcpServers": { "onenote": { "command": "deskhand", "args": ["onenote"], "timeout": 120 } } }
+{ "mcpServers": { "onenote": { "command": "deskhand", "args": ["onenote"] } } }
 ```
 
 The server logs to stderr only; stdout carries JSON-RPC.
@@ -37,6 +37,9 @@ The first tool call of a server process starts one `powershell.exe` (about 2 s).
 alive and answers later calls in under 100 ms; it exits when the client closes the server, or after 30
 idle minutes, and the next call starts a new one. While it lives it also holds a connection to
 OneNote, so if OneNote was not open it keeps running in the background until the worker exits.
+
+A call that does not finish within 40 s is abandoned and its worker is killed, so the server answers before
+a client's default tool timeout (Pi: 60 s) and no client-side `timeout` setting is needed.
 
 ### OneNote tools
 

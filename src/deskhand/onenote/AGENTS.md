@@ -71,8 +71,9 @@ Rules that keep it correct:
 - A stem that could not be written (broken pipe) is sent again to a fresh worker, apply included, because the
   worker never saw it. A worker that exits after the stem was sent gives `bridge_failed`, or `outcome_unknown`
   for an apply. Reads are not retried.
-- Calls run one at a time (an `asyncio.Lock`). The 180 s timeout counts from sending the stem, not from waiting
-  for the lock.
+- Calls run one at a time (an `asyncio.Lock`). The 40 s timeout counts from sending the stem, not from waiting
+  for the lock. It is below the 60 s default tool timeout of Pi (the strictest client in use), and startup (15 s) plus
+  the call stays under 60 s on a cold first call. Do not raise it without raising the client timeout.
 - A worker that has been idle for 30 minutes is closed by closing its stdin; the next call starts a new one.
   Closing the server (the MCP lifespan) does the same, killing it after 2 s.
 - **`bridge.ps1` must never `exit`.** An exit between writing a response and printing `deskhand-done` would make a
@@ -152,7 +153,7 @@ These are not stylistic. Each one cost real debugging time and must stay as it i
 - **The worker never inherits the server's stdin.** It gets its own pipe (`stdin=PIPE`); sharing the MCP
   connection's input would let it swallow JSON-RPC.
 - **Cancelling and timing out are different.** A client cancel kills the worker and propagates the
-  cancellation. Only the 180 s timeout becomes `bridge_failed`, or `outcome_unknown` for an apply. Either way
+  cancellation. Only the 40 s timeout becomes `bridge_failed`, or `outcome_unknown` for an apply. Either way
   the next call starts a new worker.
 - **Process lifetime (measured).** Killing the WSL-side `powershell.exe` stub, which is what a timeout or
   cancel does, also ends the Windows process. When the _server_ is SIGKILLed, the worker's stdin reaches EOF

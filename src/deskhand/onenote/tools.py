@@ -43,7 +43,8 @@ from deskhand.onenote.schemas import (
     WRITE_RESULT,
 )
 
-# The largest image verified end to end was 5.4 MB of base64; cap well above that, not at it.
+# Measured through the MCP server against a local notebook (incompressible PNG, dry run / apply):
+# 8 MB 0.5 s / 0.8 s, 16 MB 0.8 s / 1.5 s, 30 MB 1.5 s / 2.9 s. The cap leaves the apply far under the 40 s call timeout.
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
