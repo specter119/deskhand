@@ -7,18 +7,21 @@ what you already have open. Each application is its own server; they share only 
 | --------- | ------- | ---------------------------------------------------------------------------- |
 | `onenote` | working | Read, search and edit pages of the OneNote desktop client over COM, no Graph |
 
-Requirements: WSL 2 with Windows interop, Node.js 20 or newer, and the OneNote desktop client
-(not "OneNote for Windows 10") signed in on the Windows side.
+Requirements: WSL 2 with Windows interop, [uv](https://docs.astral.sh/uv/) (or Python 3.11 or newer), and
+the OneNote desktop client (not "OneNote for Windows 10") signed in on the Windows side. Nothing needs
+to be installed on the Windows side.
+
+This is the Python implementation (`master`). The earlier TypeScript implementation, with the same tools
+and the same behaviour, is frozen on the [`ts`](https://github.com/specter119/deskhand/tree/ts) branch.
 
 ## Install
 
 ```sh
-npm install -g https://codeload.github.com/specter119/deskhand/tar.gz/refs/heads/master
+uv tool install git+https://github.com/specter119/deskhand
 deskhand --version
 ```
 
-`dist/` is committed, so installing needs no build step. The tarball URL is deliberate: with npm 11,
-`npm install -g github:...` and `git+https:` leave a dangling link to a temporary clone.
+Upgrade with `uv tool install --reinstall git+https://github.com/specter119/deskhand`.
 
 ## Use
 
@@ -57,18 +60,17 @@ loop, have your client ask before any call with `dryRun=false`.
 ## Develop
 
 ```sh
-npm install
-npm run build        # tsc, writes dist/
-npm test             # unit tests with a fake bridge, no Windows needed
-npm run lint
-DESKHAND_LIVE_NOTEBOOK="My Notebook" npm run test:live
+uv sync
+uv run pytest                 # unit, parity and transport tests; no Windows needed
+uv run ruff check . && uv run ruff format --check . && uv run pyright
+DESKHAND_LIVE_NOTEBOOK="My Notebook" uv run python tests/live/onenote.py
 ```
 
 The live test needs a running OneNote desktop client. It creates a section called `deskhand-probe`
 in the notebook you name, writes and deletes its own pages there, and leaves the section in place.
 
-Commit the rebuilt `dist/` together with source changes. See `AGENTS.md` for the layout and
-`src/onenote/AGENTS.md` for the OneNote behaviour the bridge depends on.
+Set `DESKHAND_LOG=info` to log every bridge call and its duration to stderr. See `AGENTS.md` for the
+layout and `src/deskhand/onenote/AGENTS.md` for the OneNote behaviour the bridge depends on.
 
 ## License
 

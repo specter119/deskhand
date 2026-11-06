@@ -5,25 +5,34 @@ application, a small shared core. Only `onenote` exists today.
 
 ## Layout
 
-- `src/cli.ts`: `deskhand <app>` entry point; serves one app over stdio. Logs go to stderr only.
-- `src/core/`: what every app shares and nothing app-specific.
-  - `powershell.ts`: runs one op per `powershell.exe` process through request/response files.
-  - `apply-token.ts`: single-use, request-bound tokens for the two-step write flow.
-  - `server.ts`: `defineTool`, which wires a TypeBox schema pair and a handler into the MCP SDK.
-- `src/onenote/`: the OneNote server. Read `src/onenote/AGENTS.md` before touching `bridge.ps1`.
-- `tests/unit/`: run with `npm test`; fake bridge, in-memory MCP client, no Windows.
+- `src/deskhand/cli.py`: `deskhand <app>` entry point; serves one app over stdio. Logs go to stderr only.
+- `src/deskhand/core/`: what every app shares and nothing app-specific.
+  - `powershell.py`: runs one op per `powershell.exe` process through request/response files.
+  - `apply_token.py`: single-use, request-bound tokens for the two-step write flow.
+  - `server.py`: `ToolSpec` and `build_server`, which validate arguments and results (the MCP SDK does not).
+  - `schema.py`, `compat.py`: JSON Schema builders, and the JavaScript-compatible text and number helpers.
+- `src/deskhand/onenote/`: the OneNote server. Read `src/deskhand/onenote/AGENTS.md` before touching
+  `bridge.ps1`.
+- `tests/unit/`: run with `uv run pytest`; fake bridge, in-memory MCP client, fake `powershell.exe`, no Windows.
+- `tests/parity/`: the scenario and the transcripts recorded from the TypeScript implementation (branch `ts`).
+  `test_parity.py` replays them; a wording change in a tool reply fails it on purpose. Regenerate the
+  fixtures only when the contract is meant to change.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
-- `dist/`: committed build output. a global install from the GitHub tarball runs no build.
+- Branch `ts` holds the frozen TypeScript implementation, with its own tests.
 
 ## Rules
 
-- Add a new application as `src/<app>/` with its own server; do not widen `src/core` for one app.
+- Add a new application as `src/deskhand/<app>/` with its own server; do not widen `core` for one app.
   Promote code into `core` only when a second app needs it.
 - A write is never a single call: dry run first, apply with the token. Keep both layers described in
-  `src/onenote/AGENTS.md`.
+  `src/deskhand/onenote/AGENTS.md`.
 - `bridge.ps1` is shipped as UTF-8 and sent to Windows PowerShell 5.1 as text, so it must parse there.
   Check it after editing, and run the live test.
-- Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` before committing, and
-  commit the rebuilt `dist/`.
+- Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` and `uv run pytest` before
+  committing. Do not commit `uv.lock`: it records the local package index URL.
+- Install the local copy with `uv tool install <repo>` (not `--editable`) and `--reinstall` after a change;
+  an editable install breaks `deskhand` whenever the working copy is on another branch.
+- Python code that formats numbers or text for users goes through `core/compat.py`: JavaScript and Python
+  differ on `36.0`, rounding of halves and truthiness of `[]`, and clients saw the JavaScript results first.
 - Keep personal data out of the repository: no notebook names, account names, paths under a home
   directory or work-related identifiers in code, tests, docs or commit messages.

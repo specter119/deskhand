@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deskhand"
+dynamic = ["version"]
+description = "MCP servers that drive live Windows desktop applications from WSL. First target: the OneNote desktop client over COM."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "specter119" }]
+requires-python = ">=3.11"
+keywords = ["mcp", "model-context-protocol", "onenote", "com", "wsl", "automation"]
+dependencies = ["mcp>=2.3,<3", "jsonschema>=4.20"]
+
+[project.urls]
+Homepage = "https://github.com/specter119/deskhand"
+Issues = "https://github.com/specter119/deskhand/issues"
+
+[project.scripts]
+deskhand = "deskhand.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff", "pyright"]
+
+[tool.hatch.version]
+path = "src/deskhand/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "LICENSE", "AGENTS.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deskhand"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+ignore = ["E501"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

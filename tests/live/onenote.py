@@ -1,0 +1,376 @@
+"""Live checks against a real OneNote desktop client. Needs WSL with Windows interop.
+
+    DESKHAND_LIVE_NOTEBOOK="<existing notebook name>" uv run python tests/live/onenote.py
+
+Every page it creates is titled "deskhand-live-<pid>-..." in the section DESKHAND_LIVE_SECTION
+(default "deskhand-probe", created if missing) and is deleted again, also when a check fails.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import os
+import re
+import struct
+import sys
+import tempfile
+import time
+import traceback
+import zlib
+from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
+from pathlib import Path
+from typing import Any
+
+from mcp import Client, StdioServerParameters
+
+NOTEBOOK = os.environ.get("DESKHAND_LIVE_NOTEBOOK")
+SECTION = os.environ.get("DESKHAND_LIVE_SECTION", "deskhand-probe")
+if not NOTEBOOK:
+    sys.exit("Set DESKHAND_LIVE_NOTEBOOK to the name of an existing notebook.")
+
+ENSURE_SECTION = (Path(__file__).parent / "ensure-section.ps1").read_text("utf-8")
+TAG = f"deskhand-live-{os.getpid()}-{int(time.time()):x}"
+WHERE = {"notebook": NOTEBOOK, "section": SECTION}
+
+
+def quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+async def ensure_section() -> str:
+    script = f"$Notebook = {quote(NOTEBOOK or '')}; $Section = {quote(SECTION)}\n{ENSURE_SECTION}"
+    proc = await asyncio.create_subprocess_exec(
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-EncodedCommand",
+        base64.b64encode(script.encode("utf-16-le")).decode(),
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode:
+        raise RuntimeError(stderr.decode("utf-8", "replace"))
+    return stdout.decode("utf-8", "replace").strip()
+
+
+class Result:
+    def __init__(self, raw: Any) -> None:
+        self.is_error: bool = bool(raw.is_error)
+        self.text = "\n".join(getattr(block, "text", "") for block in raw.content)
+        self.data: dict[str, Any] = raw.structured_content or {}
+
+
+class Server:
+    def __init__(self, client: Client) -> None:
+        self.client = client
+
+    async def call(self, name: str, args: dict[str, Any] | None = None) -> Result:
+        return Result(await self.client.call_tool(name, args or {}))
+
+    async def write(self, name: str, args: dict[str, Any]) -> tuple[Result, Result, str]:
+        """Dry run, then apply with the token it issued. Returns both results and the token."""
+        dry = await self.call(name, args)
+        assert not dry.is_error, f"{name} dry run failed: {dry.text}"
+        assert dry.data["status"] == "dry-run"
+        token = dry.data["applyToken"]
+        assert dry.text.split("\n")[0] == f"applyToken: {token}", "token must be the first line"
+        applied = await self.call(name, {**args, "dryRun": False, "applyToken": token})
+        return dry, applied, token
+
+
+def png() -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    size = 16
+    header = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    rows = b"".join(b"\x00" + b"\x80" * (size * 3) for _ in range(size))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+results: list[tuple[str, bool]] = []
+
+
+async def check(name: str, fn: Callable[[], Awaitable[None]]) -> None:
+    try:
+        await fn()
+        results.append((name, True))
+        print(f"ok   {name}")
+    except Exception:
+        results.append((name, False))
+        trace = "\n     ".join(traceback.format_exc().splitlines()[-6:])
+        print(f"FAIL {name}\n     {trace}")
+
+
+async def main() -> int:
+    created: list[str] = []
+    print(f"section {SECTION}: {(await ensure_section()).split(' ')[0]}")
+
+    async with AsyncExitStack() as stack:
+        params = StdioServerParameters(command=sys.executable, args=["-m", "deskhand", "onenote"])
+        a = Server(await stack.enter_async_context(Client(params)))
+        b = Server(await stack.enter_async_context(Client(params)))
+
+        async def page_id_of(title: str) -> str | None:
+            listing = await a.call("pages", WHERE)
+            return next((p["id"] for p in listing.data["pages"] if p["name"] == title), None)
+
+        async def read_page(server: Server, page_id: str) -> dict[str, Any]:
+            return (await server.call("read_page", {"pageId": page_id})).data["page"]
+
+        title = f"{TAG}-main"
+        state: dict[str, Any] = {}
+
+        async def line_by_text(text: str) -> dict[str, Any] | None:
+            page = await read_page(a, state["page_id"])
+            return next((line for line in page["lines"] if line["text"] == text), None)
+
+        try:
+
+            async def lists_tools() -> None:
+                tools = (await a.client.list_tools()).tools
+                assert len(tools) == 10
+                for tool in tools:
+                    assert tool.output_schema, f"{tool.name} has no output_schema"
+
+            await check("lists ten tools with output schemas", lists_tools)
+
+            async def notebooks() -> None:
+                data = (await a.call("notebooks")).data
+                notebook = next((n for n in data["notebooks"] if n["name"] == NOTEBOOK), None)
+                assert notebook, "notebook missing"
+                assert any(s["name"] == SECTION for s in notebook["sections"]), "section missing"
+
+            await check("notebooks shows the live notebook and the probe section", notebooks)
+
+            async def create() -> None:
+                args = {**WHERE, "title": title, "lines": ["first line", "keep line"]}
+                dry = await a.call("create_page", args)
+                assert not dry.is_error, dry.text
+                assert await page_id_of(title) is None, "dry run created the page"
+
+                refused = await a.call("create_page", {**args, "dryRun": False})
+                assert refused.is_error, "apply without a token must fail"
+                assert await page_id_of(title) is None, "refused apply created the page"
+
+                token = dry.data["applyToken"]
+                applied = await a.call("create_page", {**args, "dryRun": False, "applyToken": token})
+                assert not applied.is_error, applied.text
+                page_id = await page_id_of(title)
+                assert page_id, "page not found after apply"
+                state["page_id"] = page_id
+                created.append(page_id)
+
+                reused = await a.call("create_page", {**args, "dryRun": False, "applyToken": token})
+                assert reused.is_error, "a token must be single use"
+                pages = (await a.call("pages", WHERE)).data["pages"]
+                assert sum(p["name"] == title for p in pages) == 1, "reused token created a second page"
+
+            await check(
+                "create_page: dry run writes nothing, apply without token is refused, apply creates", create
+            )
+
+            async def reads() -> None:
+                page = await read_page(a, state["page_id"])
+                assert page["name"] == title
+                assert any(line["text"] == "first line" for line in page["lines"])
+
+            await check("read_page returns paragraphs that validate against the output schema", reads)
+
+            async def append() -> None:
+                _, applied, _ = await a.write(
+                    "append_lines", {"pageId": state["page_id"], "lines": ["second line"]}
+                )
+                assert not applied.is_error, applied.text
+                texts = [line["text"] for line in (await read_page(a, state["page_id"]))["lines"]]
+                assert "first line" in texts and "second line" in texts, "|".join(texts)
+
+            await check("append_lines adds a paragraph and leaves the old ones", append)
+
+            async def second_dry_run() -> None:
+                target = await line_by_text("keep line")
+                assert target
+                args = {"pageId": state["page_id"], "set": [{"objectID": target["objectID"], "text": "kept"}]}
+                one = await a.call("edit", args)
+                two = await a.call("edit", args)
+                assert not one.is_error and not two.is_error, one.text + two.text
+                assert one.data["applyToken"] != two.data["applyToken"]
+                applied = await a.call(
+                    "edit", {**args, "dryRun": False, "applyToken": one.data["applyToken"]}
+                )
+                assert not applied.is_error, applied.text
+                assert await line_by_text("kept")
+
+            await check(
+                "a second dry run of an unchanged page does not invalidate the first token", second_dry_run
+            )
+
+            async def stale_token() -> None:
+                # The fingerprint covers the outline text that would be written, so the concurrent change
+                # must touch another paragraph of the same outline.
+                target = await line_by_text("first line")
+                neighbour = await line_by_text("kept")
+                assert target and neighbour
+                page_id = state["page_id"]
+                stale_args = {"pageId": page_id, "set": [{"objectID": target["objectID"], "text": "STALE"}]}
+                stale = await a.call("edit", stale_args)
+                _, other, _ = await a.write(
+                    "edit",
+                    {"pageId": page_id, "set": [{"objectID": neighbour["objectID"], "text": "neighbour"}]},
+                )
+                assert not other.is_error, other.text
+                refused = await a.call(
+                    "edit", {**stale_args, "dryRun": False, "applyToken": stale.data["applyToken"]}
+                )
+                assert refused.is_error
+                assert re.search(r"changed_since_preview", refused.text), refused.text
+                assert not await line_by_text("STALE")
+                assert await line_by_text("neighbour")
+
+            await check("a token is refused when the outline changed after the dry run", stale_token)
+
+            async def other_arguments() -> None:
+                page_id = state["page_id"]
+                dry = await a.call("append_lines", {"pageId": page_id, "lines": ["bound"]})
+                refused = await a.call(
+                    "append_lines",
+                    {
+                        "pageId": page_id,
+                        "lines": ["something else"],
+                        "dryRun": False,
+                        "applyToken": dry.data["applyToken"],
+                    },
+                )
+                assert refused.is_error
+                page = await read_page(a, page_id)
+                assert not any(line["text"] == "something else" for line in page["lines"])
+
+            await check("a token for different arguments is refused", other_arguments)
+
+            async def edit_remove() -> None:
+                page_id = state["page_id"]
+                first = await line_by_text("first line")
+                kept = await line_by_text("neighbour")
+                assert first and kept
+                assert first["outlineID"] == kept["outlineID"], "both lines should share the first outline"
+                _, applied, _ = await a.write("edit", {"pageId": page_id, "remove": [kept["objectID"]]})
+                assert not applied.is_error, applied.text
+                assert not await line_by_text("neighbour")
+                assert await line_by_text("first line")
+                rejected = await a.call(
+                    "edit",
+                    {
+                        "pageId": page_id,
+                        "set": [{"objectID": first["objectID"], "text": "x", "xml": "<one:OE/>"}],
+                    },
+                )
+                assert rejected.is_error, "raw xml must be rejected"
+
+            await check(
+                "edit: set replaces text, remove deletes a paragraph, raw xml is rejected", edit_remove
+            )
+
+            async def table() -> None:
+                _, applied, _ = await a.write(
+                    "insert_table",
+                    {
+                        "pageId": state["page_id"],
+                        "headers": ["a", "b"],
+                        "rows": [["1", "2"], ["3", "4"]],
+                        "hasHeaderRow": True,
+                        "bordersVisible": True,
+                    },
+                )
+                assert not applied.is_error, applied.text
+                page = await read_page(a, state["page_id"])
+                assert len(page["tables"]) == 1
+                assert page["tables"][0]["rows"] == 3
+                assert page["tables"][0]["columns"] == 2
+
+            await check("insert_table adds a table", table)
+
+            async def image() -> None:
+                with tempfile.TemporaryDirectory(prefix="deskhand-live-") as directory:
+                    file = Path(directory) / "probe.png"
+                    file.write_bytes(png())
+                    _, applied, _ = await a.write(
+                        "insert_image", {"pageId": state["page_id"], "path": str(file), "alt": "probe"}
+                    )
+                assert not applied.is_error, applied.text
+                assert len((await read_page(a, state["page_id"]))["images"]) == 1
+
+            await check("insert_image adds an image bound to the file contents", image)
+
+            async def two_processes() -> None:
+                titles = [f"{TAG}-a", f"{TAG}-b"]
+                (_, ra, _), (_, rb, _) = await asyncio.gather(
+                    a.write("create_page", {**WHERE, "title": titles[0], "lines": ["from a"]}),
+                    b.write("create_page", {**WHERE, "title": titles[1], "lines": ["from b"]}),
+                )
+                assert not ra.is_error, ra.text
+                assert not rb.is_error, rb.text
+                ids = await asyncio.gather(*(page_id_of(t) for t in titles))
+                assert all(ids), "a page is missing"
+                created.extend(i for i in ids if i)
+                id_a, id_b = ids
+                reads = await asyncio.gather(
+                    *(a.call("read_page", {"pageId": id_a}) for _ in range(3)),
+                    *(b.call("read_page", {"pageId": id_b}) for _ in range(3)),
+                    a.call("pages", WHERE),
+                    b.call("notebooks"),
+                )
+                for read in reads:
+                    assert not read.is_error, read.text
+                appends = await asyncio.gather(
+                    a.write("append_lines", {"pageId": id_a, "lines": ["a2"]}),
+                    b.write("append_lines", {"pageId": id_b, "lines": ["b2"]}),
+                )
+                for _, applied, _ in appends:
+                    assert not applied.is_error, applied.text
+                assert any(line["text"] == "a2" for line in (await read_page(a, id_a or ""))["lines"])
+                assert any(line["text"] == "b2" for line in (await read_page(b, id_b or ""))["lines"])
+
+            await check("two server processes work on separate pages at the same time", two_processes)
+
+            async def delete() -> None:
+                page_id = state["page_id"]
+                wrong = await a.call("delete_page", {"pageId": page_id, "expectName": "not the title"})
+                assert wrong.is_error, "a wrong expectName must fail"
+                assert await page_id_of(title)
+                _, applied, _ = await a.write("delete_page", {"pageId": page_id, "expectName": title})
+                assert not applied.is_error, applied.text
+                assert await page_id_of(title) is None
+
+            await check("delete_page checks the name, then removes the page", delete)
+        finally:
+            for page_id in created:
+                pages = (await a.call("pages", WHERE)).data["pages"]
+                name = next((p["name"] for p in pages if p["id"] == page_id), None)
+                if not name:
+                    continue
+                try:
+                    _, applied, _ = await a.write("delete_page", {"pageId": page_id, "expectName": name})
+                    if applied.is_error:
+                        print(f"cleanup of {name} failed: {applied.text}")
+                except Exception as error:
+                    print(f"cleanup of {name} failed: {error}")
+
+    failed = sum(1 for _, ok in results if not ok)
+    print(f"\n{len(results) - failed}/{len(results)} passed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))

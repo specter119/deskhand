@@ -1,3 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.pyright/
 node_modules/
 *.log
 .DS_Store
+# uv would write the index URL from the machine's own uv.toml into it
+uv.lock
