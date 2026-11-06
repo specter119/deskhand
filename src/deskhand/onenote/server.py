@@ -37,8 +37,9 @@ INSTRUCTIONS = "\n".join(
 
 def create_onenote_server(bridge: BridgeFn | None = None, tokens: TokenTable | None = None) -> Server:
     """Cheap and free of side effects: nothing touches Windows until a tool runs."""
-    deps = OneNoteDeps(
-        bridge=bridge or PowerShellBridge(BRIDGE_SCRIPT, "onenote"),
-        tokens=tokens or TokenTable(),
-    )
-    return build_server("onenote", __version__, INSTRUCTIONS, build_tools(deps))
+    on_close = None
+    if bridge is None:
+        owned = PowerShellBridge(BRIDGE_SCRIPT, "onenote")
+        bridge, on_close = owned, owned.close
+    deps = OneNoteDeps(bridge=bridge, tokens=tokens or TokenTable())
+    return build_server("onenote", __version__, INSTRUCTIONS, build_tools(deps), on_close=on_close)

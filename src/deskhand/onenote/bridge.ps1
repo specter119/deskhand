@@ -1,14 +1,20 @@
-# OneNote bridge for the pi `onenote` extension. Loaded by a tiny encoded bootstrap:
+# OneNote bridge for the deskhand `onenote` server. One powershell.exe runs this file for the whole life of
+# the server process, started through a tiny encoded bootstrap:
 #
-#   powershell.exe -NoProfile -NonInteractive -EncodedCommand <base64 UTF-16LE of>
-#     $ErrorActionPreference='Stop'
+#   powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand <base64 UTF-16LE of>
+#     $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 #     $d='<work dir>'
-#     $f='<call stem>'
-#     $i=[IO.File]::ReadAllText("$d\req-$f.json",[Text.Encoding]::UTF8)|ConvertFrom-Json
-#     Invoke-Expression $i.__script
+#     Invoke-Expression ([IO.File]::ReadAllText("$d\worker-<id>.ps1",[Text.Encoding]::UTF8))
 #
-# $f makes each call use its own request/response pair, so parallel tool calls cannot
-# clobber each other's files.
+# worker-<id>.ps1 is this file. It defines the functions below, then serves calls until stdin closes:
+#   stdin   one call stem per line
+#   stdout  "deskhand-ready 1 <windows pid>" once, then "deskhand-done <stem>" after each call
+#   files   req-<stem>.json in and resp-<stem>.json out, both UTF-8, inside $d
+# A fresh process per call cost ~0.6 s of start-up and exit plus ~0.3 s of reloading this file; a resident
+# worker answers in a few milliseconds. The stem keeps each call on its own file pair.
+#
+# Never use `exit` anywhere in this file: it would end the worker between writing a response and printing
+# "deskhand-done", and the caller would take a finished write for a lost one. Stop a call with Fail or return.
 #
 # The transport is shaped by four constraints found the hard way:
 #   * WSL interop does not forward the Linux environment to Windows executables and
@@ -25,10 +31,10 @@
 # XmlNamespaceManager implement IEnumerable, so passing or returning one makes PowerShell
 # silently unroll it into namespace prefixes.
 #
-# Provided by the bootstrap: $d (work dir), $f (call stem), $i (parsed request).
-#   request  { "op": "<name>", "__script": "...", ...args }
+# Provided by the bootstrap: $d (work dir).
+#   request  { "op": "<name>", ...args }
 #   response { "ok": true, "data": {...} } | { "ok": false, "error": "...", "code": "..." }
-# Always exits 0 after writing a response; a missing response file is the only hard failure.
+# Every call writes a response; a missing response file is the only hard failure.
 #
 # Write contract: every write op is default-deny. It only writes when the request carries
 # apply=true AND a non-empty expectFingerprint. The fingerprint is recomputed here, right before
@@ -43,17 +49,23 @@ $XP_NOTEBOOK = '//*[local-name()="Notebook"]'
 $XP_SECTION = '*[local-name()="Section"]'
 $XP_PAGE = '*[local-name()="Page"]'
 $XP_OE = '*[local-name()="OE"]'
-$REQ = Join-Path $d ('req-' + $f + '.json')
-$RESP = Join-Path $d ('resp-' + $f + '.json')
+$ProgressPreference = 'SilentlyContinue'
+
+# Set per call by Invoke-Request. RESPONDED makes the first response final and tells the catch in
+# Invoke-Request that Fail's throw is control flow, not an error: a .NET callback wraps a thrown exception,
+# so its message cannot be matched reliably.
+$script:RESP = $null
+$script:RESPONDED = $false
 
 function Write-Response($payload) {
 	$json = $payload | ConvertTo-Json -Depth 40 -Compress
-	[IO.File]::WriteAllText($RESP, $json, [System.Text.UTF8Encoding]::new($false))
+	[IO.File]::WriteAllText($script:RESP, $json, [System.Text.UTF8Encoding]::new($false))
+	$script:RESPONDED = $true
 }
 
 function Fail([string]$message, [string]$code) {
 	Write-Response @{ ok = $false; error = $message; code = $code }
-	exit 0
+	throw 'deskhand:responded'
 }
 
 # --- text helpers -----------------------------------------------------------
@@ -714,231 +726,264 @@ function Get-RequestedLines($req) {
 
 # --- main -------------------------------------------------------------------
 
-try {
-	if ([string]::IsNullOrEmpty($d) -or [string]::IsNullOrEmpty($f) -or $null -eq $i) { exit 2 }
+function Invoke-Request([string]$stem) {
+	$script:RESP = Join-Path $script:WORK ('resp-' + $stem + '.json')
+	$script:RESPONDED = $false
+	# Unassigned names resolve up the dynamic scope chain, so the worker's globals must not leak in.
+	$onenote = $null
+	try {
+		$req = [IO.File]::ReadAllText((Join-Path $script:WORK ('req-' + $stem + '.json')), [Text.Encoding]::UTF8) | ConvertFrom-Json
+		$op = [string]$req.op
+		$sw = [Diagnostics.Stopwatch]::StartNew()
 
-	$req = $i
-	$op = [string]$req.op
-	$sw = [Diagnostics.Stopwatch]::StartNew()
+		if ($op -eq 'ping') {
+			$onenote = New-Object -ComObject OneNote.Application
+			$xml = Get-HierarchyXml $onenote '' 3
+			Write-Response @{ ok = $true; data = @{ ready = $true; hierarchyChars = $xml.Length; elapsedMs = [int]$sw.ElapsedMilliseconds } }
+			return
+		}
 
-	if ($op -eq 'ping') {
 		$onenote = New-Object -ComObject OneNote.Application
-		$xml = Get-HierarchyXml $onenote '' 3
-		[void][Runtime.InteropServices.Marshal]::ReleaseComObject($onenote)
-		Write-Response @{ ok = $true; data = @{ ready = $true; hierarchyChars = $xml.Length; elapsedMs = [int]$sw.ElapsedMilliseconds } }
-		exit 0
-	}
 
-	$onenote = New-Object -ComObject OneNote.Application
-
-	switch ($op) {
-		'notebooks' {
-			Write-Response @{ ok = $true; data = @{ notebooks = @(Get-NotebookTree $onenote) } }
-		}
-
-		'pages' {
-			$secId = Resolve-SectionId $onenote ([string]$req.sectionId) ([string]$req.notebook) ([string]$req.section)
-			[xml]$doc = Get-HierarchyXml $onenote $secId 4
-			$sectionName = ''
-			$secNode = $doc.SelectSingleNode('//*[local-name()="Section"]')
-			if ($null -ne $secNode) { $sectionName = $secNode.GetAttribute('name') }
-			$out = New-Object System.Collections.ArrayList
-			# lastModified is deliberately absent: GetHierarchy's copy of it is stale, and reporting it
-			# invites a caller to pass it back as expectedModified. read_page is the only source for that.
-			foreach ($pg in $doc.SelectNodes('//*[local-name()="Page"]')) {
-				[void]$out.Add(@{
-						id      = $pg.GetAttribute('ID')
-						name    = $pg.GetAttribute('name')
-						level   = $pg.GetAttribute('pageLevel')
-						created = $pg.GetAttribute('dateTime')
-					})
+		switch ($op) {
+			'notebooks' {
+				Write-Response @{ ok = $true; data = @{ notebooks = @(Get-NotebookTree $onenote) } }
 			}
-			Write-Response @{ ok = $true; data = @{ sectionId = $secId; section = $sectionName; pages = @($out) } }
-		}
 
-		'search' {
-			$query = ([string]$req.query).ToLowerInvariant()
-			$limit = 25
-			if ($null -ne $req.limit) { $limit = [int]$req.limit }
-			[xml]$doc = Get-HierarchyXml $onenote '' 4
-			$out = New-Object System.Collections.ArrayList
-			foreach ($nb in $doc.SelectNodes($XP_NOTEBOOK)) {
-				foreach ($sec in $nb.SelectNodes('.//' + $XP_SECTION)) {
-					foreach ($pg in $sec.SelectNodes($XP_PAGE)) {
-						if ($pg.GetAttribute('name').ToLowerInvariant().Contains($query)) {
-							[void]$out.Add(@{
-									pageId   = $pg.GetAttribute('ID')
-									page     = $pg.GetAttribute('name')
-									section  = $sec.GetAttribute('name')
-									notebook = $nb.GetAttribute('name')
-								})
+			'pages' {
+				$secId = Resolve-SectionId $onenote ([string]$req.sectionId) ([string]$req.notebook) ([string]$req.section)
+				[xml]$doc = Get-HierarchyXml $onenote $secId 4
+				$sectionName = ''
+				$secNode = $doc.SelectSingleNode('//*[local-name()="Section"]')
+				if ($null -ne $secNode) { $sectionName = $secNode.GetAttribute('name') }
+				$out = New-Object System.Collections.ArrayList
+				# lastModified is deliberately absent: GetHierarchy's copy of it is stale, and reporting it
+				# invites a caller to pass it back as expectedModified. read_page is the only source for that.
+				foreach ($pg in $doc.SelectNodes('//*[local-name()="Page"]')) {
+					[void]$out.Add(@{
+							id      = $pg.GetAttribute('ID')
+							name    = $pg.GetAttribute('name')
+							level   = $pg.GetAttribute('pageLevel')
+							created = $pg.GetAttribute('dateTime')
+						})
+				}
+				Write-Response @{ ok = $true; data = @{ sectionId = $secId; section = $sectionName; pages = @($out) } }
+			}
+
+			'search' {
+				$query = ([string]$req.query).ToLowerInvariant()
+				$limit = 25
+				if ($null -ne $req.limit) { $limit = [int]$req.limit }
+				[xml]$doc = Get-HierarchyXml $onenote '' 4
+				$out = New-Object System.Collections.ArrayList
+				foreach ($nb in $doc.SelectNodes($XP_NOTEBOOK)) {
+					foreach ($sec in $nb.SelectNodes('.//' + $XP_SECTION)) {
+						foreach ($pg in $sec.SelectNodes($XP_PAGE)) {
+							if ($pg.GetAttribute('name').ToLowerInvariant().Contains($query)) {
+								[void]$out.Add(@{
+										pageId   = $pg.GetAttribute('ID')
+										page     = $pg.GetAttribute('name')
+										section  = $sec.GetAttribute('name')
+										notebook = $nb.GetAttribute('name')
+									})
+							}
 						}
 					}
 				}
+				$trimmed = @($out | Select-Object -First $limit)
+				Write-Response @{ ok = $true; data = @{ total = $out.Count; returned = $trimmed.Count; pages = @($trimmed) } }
 			}
-			$trimmed = @($out | Select-Object -First $limit)
-			Write-Response @{ ok = $true; data = @{ total = $out.Count; returned = $trimmed.Count; pages = @($trimmed) } }
-		}
 
-		'read_page' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			$model = Read-PageById $onenote $page.id
-			if ($req.includeXml -eq $true) {
-				$model['rawXml'] = Get-PageContentXml $onenote $page.id
-			}
-			Write-Response @{ ok = $true; data = @{ page = $model } }
-		}
-
-		'create_page' {
-			$secId = Resolve-SectionId $onenote ([string]$req.sectionId) ([string]$req.notebook) ([string]$req.section)
-			# GetHierarchy fails for an id that is not a node, which validates an explicit sectionId.
-			[xml]$secDoc = Get-HierarchyXml $onenote $secId 0
-			$sectionName = $secDoc.DocumentElement.GetAttribute('name')
-			$title = [string]$req.title
-			$lines = Get-RequestedLines $req
-			$fingerprint = Get-Sha256Hex ('create:' + $secId)
-			Assert-Fingerprint $req $fingerprint
-			if (-not (Test-Apply $req)) {
-				Write-Response @{ ok = $true; data = @{ applied = $false; fingerprint = $fingerprint; sectionId = $secId; section = $sectionName; elapsedMs = [int]$sw.ElapsedMilliseconds } }
-			}
-			else {
-				$newId = ''
-				$onenote.CreateNewPage($secId, [ref]$newId, 1)
-				if (-not [string]::IsNullOrEmpty($title)) {
-					Send-PageUpdate $onenote $newId ('<one:Title><one:OE><one:T>' + (New-TextCdata $title) + '</one:T></one:OE></one:Title>')
+			'read_page' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
+				$model = Read-PageById $onenote $page.id
+				if ($req.includeXml -eq $true) {
+					$model['rawXml'] = Get-PageContentXml $onenote $page.id
 				}
-				if ($lines.Count -gt 0) { Send-PageUpdate $onenote $newId (New-OutlineXml $lines $null) }
-				Write-Response @{ ok = $true; data = @{ applied = $true; fingerprint = $fingerprint; sectionId = $secId; section = $sectionName; page = (Read-PageById $onenote $newId); elapsedMs = [int]$sw.ElapsedMilliseconds } }
+				Write-Response @{ ok = $true; data = @{ page = $model } }
 			}
-		}
 
-		'append' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			$lines = Get-RequestedLines $req
-			if ($lines.Count -eq 0) { Fail 'no lines to append' 'invalid_request' }
-			# Appending is additive and cannot clobber a concurrent edit, so the fingerprint only has to
-			# tie the apply to the page that was previewed.
-			$fingerprint = Get-Sha256Hex ('page:' + $page.id)
-			Assert-Fingerprint $req $fingerprint
-			$applied = (Test-Apply $req)
-			if ($applied) { Send-PageUpdate $onenote $page.id (New-OutlineXml $lines $req.position) }
-			Write-Response @{ ok = $true; data = @{
-					applied     = $applied
-					fingerprint = $fingerprint
-					page        = (Read-PageById $onenote $page.id)
-					elapsedMs   = [int]$sw.ElapsedMilliseconds
-				} }
-		}
+			'create_page' {
+				$secId = Resolve-SectionId $onenote ([string]$req.sectionId) ([string]$req.notebook) ([string]$req.section)
+				# GetHierarchy fails for an id that is not a node, which validates an explicit sectionId.
+				[xml]$secDoc = Get-HierarchyXml $onenote $secId 0
+				$sectionName = $secDoc.DocumentElement.GetAttribute('name')
+				$title = [string]$req.title
+				$lines = Get-RequestedLines $req
+				$fingerprint = Get-Sha256Hex ('create:' + $secId)
+				Assert-Fingerprint $req $fingerprint
+				if (-not (Test-Apply $req)) {
+					Write-Response @{ ok = $true; data = @{ applied = $false; fingerprint = $fingerprint; sectionId = $secId; section = $sectionName; elapsedMs = [int]$sw.ElapsedMilliseconds } }
+				}
+				else {
+					$newId = ''
+					$onenote.CreateNewPage($secId, [ref]$newId, 1)
+					if (-not [string]::IsNullOrEmpty($title)) {
+						Send-PageUpdate $onenote $newId ('<one:Title><one:OE><one:T>' + (New-TextCdata $title) + '</one:T></one:OE></one:Title>')
+					}
+					if ($lines.Count -gt 0) { Send-PageUpdate $onenote $newId (New-OutlineXml $lines $null) }
+					Write-Response @{ ok = $true; data = @{ applied = $true; fingerprint = $fingerprint; sectionId = $secId; section = $sectionName; page = (Read-PageById $onenote $newId); elapsedMs = [int]$sw.ElapsedMilliseconds } }
+				}
+			}
 
-		'edit' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			[xml]$doc = Get-PageContentXml $onenote $page.id
-			$plan = New-EditPlan $doc.DocumentElement $req $false
-			$fingerprint = Get-PlanFingerprint $page.id $plan
-			Assert-Fingerprint $req $fingerprint
-
-			$applied = (Test-Apply $req)
-			if ($applied) { Send-PageUpdate $onenote $page.id $plan.inner }
-
-			Write-Response @{ ok = $true; data = @{
-					applied     = $applied
-					fingerprint = $fingerprint
-					changes     = $plan.changes
-					page        = (Read-PageById $onenote $page.id)
-					elapsedMs   = [int]$sw.ElapsedMilliseconds
-				} }
-		}
-
-		# insert_table and insert_image share a shape: build one one:OE block and either put it into an
-		# existing outline (rebuilding that outline in full) or hang it on the page as a new outline.
-		'insert_table' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			$block = New-TableOeXml (Get-RequestedLines @{ lines = $req.headers }) $req.rows ([bool]$req.bordersVisible) ([bool]$req.hasHeaderRow) $req.columnWidths
-			$outlineId = [string]$req.outline
-
-			$fingerprint = ''
-			if ([string]::IsNullOrEmpty($outlineId)) {
+			'append' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
+				$lines = Get-RequestedLines $req
+				if ($lines.Count -eq 0) { Fail 'no lines to append' 'invalid_request' }
+				# Appending is additive and cannot clobber a concurrent edit, so the fingerprint only has to
+				# tie the apply to the page that was previewed.
 				$fingerprint = Get-Sha256Hex ('page:' + $page.id)
 				Assert-Fingerprint $req $fingerprint
-				if (Test-Apply $req) { Send-PageUpdate $onenote $page.id (New-BlockOutlineXml @($block)) }
+				$applied = (Test-Apply $req)
+				if ($applied) { Send-PageUpdate $onenote $page.id (New-OutlineXml $lines $req.position) }
+				Write-Response @{ ok = $true; data = @{
+						applied     = $applied
+						fingerprint = $fingerprint
+						page        = (Read-PageById $onenote $page.id)
+						elapsedMs   = [int]$sw.ElapsedMilliseconds
+					} }
 			}
-			else {
+
+			'edit' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
 				[xml]$doc = Get-PageContentXml $onenote $page.id
-				$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
+				$plan = New-EditPlan $doc.DocumentElement $req $false
 				$fingerprint = Get-PlanFingerprint $page.id $plan
 				Assert-Fingerprint $req $fingerprint
-				if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }
+
+				$applied = (Test-Apply $req)
+				if ($applied) { Send-PageUpdate $onenote $page.id $plan.inner }
+
+				Write-Response @{ ok = $true; data = @{
+						applied     = $applied
+						fingerprint = $fingerprint
+						changes     = $plan.changes
+						page        = (Read-PageById $onenote $page.id)
+						elapsedMs   = [int]$sw.ElapsedMilliseconds
+					} }
 			}
 
-			Write-Response @{ ok = $true; data = @{
-					applied     = (Test-Apply $req)
-					fingerprint = $fingerprint
-					kind        = 'table'
-					outlineId   = $outlineId
-					page        = (Read-PageById $onenote $page.id)
-					elapsedMs   = [int]$sw.ElapsedMilliseconds
-				} }
-		}
+			# insert_table and insert_image share a shape: build one one:OE block and either put it into an
+			# existing outline (rebuilding that outline in full) or hang it on the page as a new outline.
+			'insert_table' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
+				$block = New-TableOeXml (Get-RequestedLines @{ lines = $req.headers }) $req.rows ([bool]$req.bordersVisible) ([bool]$req.hasHeaderRow) $req.columnWidths
+				$outlineId = [string]$req.outline
 
-		'insert_image' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			$block = New-ImageOeXml ([string]$req.base64) ([string]$req.format) $req.width $req.height ([string]$req.alt)
-			$outlineId = [string]$req.outline
+				$fingerprint = ''
+				if ([string]::IsNullOrEmpty($outlineId)) {
+					$fingerprint = Get-Sha256Hex ('page:' + $page.id)
+					Assert-Fingerprint $req $fingerprint
+					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id (New-BlockOutlineXml @($block)) }
+				}
+				else {
+					[xml]$doc = Get-PageContentXml $onenote $page.id
+					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
+					$fingerprint = Get-PlanFingerprint $page.id $plan
+					Assert-Fingerprint $req $fingerprint
+					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }
+				}
 
-			$fingerprint = ''
-			if ([string]::IsNullOrEmpty($outlineId)) {
-				$fingerprint = Get-Sha256Hex ('page:' + $page.id)
+				Write-Response @{ ok = $true; data = @{
+						applied     = (Test-Apply $req)
+						fingerprint = $fingerprint
+						kind        = 'table'
+						outlineId   = $outlineId
+						page        = (Read-PageById $onenote $page.id)
+						elapsedMs   = [int]$sw.ElapsedMilliseconds
+					} }
+			}
+
+			'insert_image' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
+				$block = New-ImageOeXml ([string]$req.base64) ([string]$req.format) $req.width $req.height ([string]$req.alt)
+				$outlineId = [string]$req.outline
+
+				$fingerprint = ''
+				if ([string]::IsNullOrEmpty($outlineId)) {
+					$fingerprint = Get-Sha256Hex ('page:' + $page.id)
+					Assert-Fingerprint $req $fingerprint
+					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id (New-BlockOutlineXml @($block)) }
+				}
+				else {
+					[xml]$doc = Get-PageContentXml $onenote $page.id
+					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
+					$fingerprint = Get-PlanFingerprint $page.id $plan
+					Assert-Fingerprint $req $fingerprint
+					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }
+				}
+
+				Write-Response @{ ok = $true; data = @{
+						applied     = (Test-Apply $req)
+						fingerprint = $fingerprint
+						kind        = 'image'
+						outlineId   = $outlineId
+						page        = (Read-PageById $onenote $page.id)
+						elapsedMs   = [int]$sw.ElapsedMilliseconds
+					} }
+			}
+
+			'delete_page' {
+				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
+				# The page name is the guard, not a timestamp: lastModifiedTime does not track content
+				# written through COM, so comparing it would refuse correct deletes and miss changed pages.
+				$expectName = [string]$req.expectName
+				if ([string]::IsNullOrEmpty($expectName)) {
+					Fail 'expectName is required: pass the page name you believe this id refers to' 'invalid_request'
+				}
+				if ($page.name -ne $expectName) {
+					Fail ("refusing to delete: expected page '" + $expectName + "' but the id resolves to '" + $page.name + "'") 'name_mismatch'
+				}
+				$fingerprint = Get-Sha256Hex ('delete:' + $page.id + '|' + $page.name)
 				Assert-Fingerprint $req $fingerprint
-				if (Test-Apply $req) { Send-PageUpdate $onenote $page.id (New-BlockOutlineXml @($block)) }
-			}
-			else {
-				[xml]$doc = Get-PageContentXml $onenote $page.id
-				$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
-				$fingerprint = Get-PlanFingerprint $page.id $plan
-				Assert-Fingerprint $req $fingerprint
-				if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }
+				$deleted = (Test-Apply $req)
+				if ($deleted) { $onenote.DeleteHierarchy($page.id) }
+				Write-Response @{ ok = $true; data = @{ applied = $deleted; deleted = $deleted; fingerprint = $fingerprint; pageId = $page.id; name = $page.name; elapsedMs = [int]$sw.ElapsedMilliseconds } }
 			}
 
-			Write-Response @{ ok = $true; data = @{
-					applied     = (Test-Apply $req)
-					fingerprint = $fingerprint
-					kind        = 'image'
-					outlineId   = $outlineId
-					page        = (Read-PageById $onenote $page.id)
-					elapsedMs   = [int]$sw.ElapsedMilliseconds
-				} }
+			default { Fail ('unknown op: ' + $op) 'unknown_op' }
 		}
-
-		'delete_page' {
-			$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-			# The page name is the guard, not a timestamp: lastModifiedTime does not track content
-			# written through COM, so comparing it would refuse correct deletes and miss changed pages.
-			$expectName = [string]$req.expectName
-			if ([string]::IsNullOrEmpty($expectName)) {
-				Fail 'expectName is required: pass the page name you believe this id refers to' 'invalid_request'
-			}
-			if ($page.name -ne $expectName) {
-				Fail ("refusing to delete: expected page '" + $expectName + "' but the id resolves to '" + $page.name + "'") 'name_mismatch'
-			}
-			$fingerprint = Get-Sha256Hex ('delete:' + $page.id + '|' + $page.name)
-			Assert-Fingerprint $req $fingerprint
-			$deleted = (Test-Apply $req)
-			if ($deleted) { $onenote.DeleteHierarchy($page.id) }
-			Write-Response @{ ok = $true; data = @{ applied = $deleted; deleted = $deleted; fingerprint = $fingerprint; pageId = $page.id; name = $page.name; elapsedMs = [int]$sw.ElapsedMilliseconds } }
-		}
-
-		default { Fail ('unknown op: ' + $op) 'unknown_op' }
 	}
-
-	[void][Runtime.InteropServices.Marshal]::ReleaseComObject($onenote)
-	exit 0
+	catch {
+		if ($script:RESPONDED) { return }
+		$msg = $_.Exception.Message
+		if ($null -ne $_.Exception.InnerException) { $msg = $msg + ' / ' + $_.Exception.InnerException.Message }
+		# The request body is executed through Invoke-Expression, so report the failing source line.
+		if ($null -ne $_.InvocationInfo -and -not [string]::IsNullOrEmpty($_.InvocationInfo.Line)) {
+			$msg = $msg + ' | at: ' + $_.InvocationInfo.Line.Trim()
+		}
+		Write-Response @{ ok = $false; error = ($msg -replace "`r?`n", ' '); code = 'com_error' }
+	}
+	finally {
+		if ($null -ne $onenote) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($onenote) }
+		$script:RESP = $null
+	}
 }
-catch {
-	$msg = $_.Exception.Message
-	if ($null -ne $_.Exception.InnerException) { $msg = $msg + ' / ' + $_.Exception.InnerException.Message }
-	# The request body is executed through Invoke-Expression, so report the failing source line.
-	if ($null -ne $_.InvocationInfo -and -not [string]::IsNullOrEmpty($_.InvocationInfo.Line)) {
-		$msg = $msg + ' | at: ' + $_.InvocationInfo.Line.Trim()
+
+# --- worker loop ------------------------------------------------------------
+
+$script:WORK = $d
+$__dhUtf8 = New-Object System.Text.UTF8Encoding($false)
+# The raw stdin stream avoids Console.In, which decodes with the OEM code page.
+$__dhIn = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), $__dhUtf8, $false)
+$__dhOut = New-Object System.IO.StreamWriter([Console]::OpenStandardOutput(), $__dhUtf8)
+$__dhOut.AutoFlush = $true
+
+# Pay the JSON module's auto-load now instead of inside the first call.
+$null = '{}' | ConvertFrom-Json
+$null = @{ a = 1 } | ConvertTo-Json -Compress
+
+$__dhOut.WriteLine('deskhand-ready 1 ' + $PID)
+while ($null -ne ($__dhLine = $__dhIn.ReadLine())) {
+	$__dhStem = $__dhLine.Trim()
+	if ($__dhStem -notmatch '^[0-9A-Za-z-]+$') { continue }
+	try {
+		# Redirecting every stream keeps host output (warnings and the like) from splicing into a protocol line.
+		$null = Invoke-Request $__dhStem *> $null
 	}
-	Fail ($msg -replace "`r?`n", ' ') 'com_error'
+	catch {
+		[Console]::Error.WriteLine('deskhand worker: ' + $_.Exception.Message)
+	}
+	$Error.Clear()
+	$__dhOut.WriteLine('deskhand-done ' + $__dhStem)
 }

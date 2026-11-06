@@ -8,7 +8,8 @@ that carries only a message. An unknown tool name is a protocol error.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,7 +63,14 @@ def _failure(message: str) -> CallToolResult:
     return CallToolResult(content=[TextContent(text=message)], is_error=True)
 
 
-def build_server(name: str, version: str, instructions: str, specs: list[ToolSpec]) -> Server:
+def build_server(
+    name: str,
+    version: str,
+    instructions: str,
+    specs: list[ToolSpec],
+    on_close: Callable[[], Awaitable[None]] | None = None,
+) -> Server:
+    """`on_close` runs when the server's run loop ends, for example to stop a helper process."""
     by_name = {spec.name: spec for spec in specs}
     input_validators = {spec.name: Draft202012Validator(spec.input_schema) for spec in specs}
     output_validators = {spec.name: Draft202012Validator(spec.output_schema) for spec in specs}
@@ -103,10 +111,19 @@ def build_server(name: str, version: str, instructions: str, specs: list[ToolSpe
             return _failure(f"Output validation error: {problem}")
         return CallToolResult(content=[TextContent(text=output.text)], structured_content=output.structured)
 
+    @asynccontextmanager
+    async def lifespan(_: Server[Any]) -> AsyncIterator[dict[str, Any]]:
+        try:
+            yield {}
+        finally:
+            if on_close is not None:
+                await on_close()
+
     return Server(
         name,
         version=version,
         instructions=instructions,
         on_list_tools=list_tools,
         on_call_tool=call_tool,
+        lifespan=lifespan,
     )

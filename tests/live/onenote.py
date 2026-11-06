@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import re
+import signal
+import statistics
 import struct
 import sys
 import tempfile
@@ -24,6 +27,9 @@ from pathlib import Path
 from typing import Any
 
 from mcp import Client, StdioServerParameters
+
+from deskhand.core.powershell import BridgeError, PowerShellBridge
+from deskhand.onenote.server import BRIDGE_SCRIPT
 
 NOTEBOOK = os.environ.get("DESKHAND_LIVE_NOTEBOOK")
 SECTION = os.environ.get("DESKHAND_LIVE_SECTION", "deskhand-probe")
@@ -39,8 +45,7 @@ def quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-async def ensure_section() -> str:
-    script = f"$Notebook = {quote(NOTEBOOK or '')}; $Section = {quote(SECTION)}\n{ENSURE_SECTION}"
+async def run_powershell(script: str) -> str:
     proc = await asyncio.create_subprocess_exec(
         "powershell.exe",
         "-NoProfile",
@@ -57,6 +62,49 @@ async def ensure_section() -> str:
     if proc.returncode:
         raise RuntimeError(stderr.decode("utf-8", "replace"))
     return stdout.decode("utf-8", "replace").strip()
+
+
+async def ensure_section() -> str:
+    return await run_powershell(
+        f"$Notebook = {quote(NOTEBOOK or '')}; $Section = {quote(SECTION)}\n{ENSURE_SECTION}"
+    )
+
+
+def server_children() -> set[int]:
+    """Pids of the deskhand servers this process started."""
+    found: set[int] = set()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            ppid = int((entry / "stat").read_text().rsplit(")", 1)[1].split()[1])
+            if ppid == os.getpid() and b"deskhand" in (entry / "cmdline").read_bytes():
+                found.add(int(entry.name))
+        except (OSError, IndexError, ValueError):
+            continue
+    return found
+
+
+async def windows_workers() -> dict[int, list[int]]:
+    """Maps each WSL server pid to the Windows pids of the powershell.exe workers it started."""
+    listing = await run_powershell(
+        "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | "
+        "ForEach-Object { '{0} {1}' -f $_.ProcessId, $_.CommandLine }"
+    )
+    workers: dict[int, list[int]] = {}
+    for line in listing.splitlines():
+        match = re.match(r"(\d+) .*-EncodedCommand (\S+)", line)
+        if not match:
+            continue
+        bootstrap = base64.b64decode(match[2]).decode("utf-16-le")
+        owner = re.search(r"worker-(\d+)-[0-9a-f-]+\.ps1", bootstrap)
+        if owner:
+            workers.setdefault(int(owner[1]), []).append(int(match[1]))
+    return workers
+
+
+async def windows_process_exists(pid: int) -> bool:
+    return await run_powershell(f"[bool](Get-Process -Id {pid} -ErrorAction SilentlyContinue)") == "True"
 
 
 class Result:
@@ -121,7 +169,10 @@ async def main() -> int:
     async with AsyncExitStack() as stack:
         params = StdioServerParameters(command=sys.executable, args=["-m", "deskhand", "onenote"])
         a = Server(await stack.enter_async_context(Client(params)))
+        (pid_a,) = server_children()
         b = Server(await stack.enter_async_context(Client(params)))
+        (pid_b,) = server_children() - {pid_a}
+        first_worker: dict[str, int] = {}
 
         async def page_id_of(title: str) -> str | None:
             listing = await a.call("pages", WHERE)
@@ -154,6 +205,13 @@ async def main() -> int:
                 assert any(s["name"] == SECTION for s in notebook["sections"]), "section missing"
 
             await check("notebooks shows the live notebook and the probe section", notebooks)
+
+            async def one_worker_started() -> None:
+                workers = await windows_workers()
+                assert len(workers.get(pid_a, [])) == 1, workers
+                first_worker["a"] = workers[pid_a][0]
+
+            await check("the first call starts exactly one resident powershell.exe", one_worker_started)
 
             async def create() -> None:
                 args = {**WHERE, "title": title, "lines": ["first line", "keep line"]}
@@ -343,6 +401,150 @@ async def main() -> int:
                 assert any(line["text"] == "b2" for line in (await read_page(b, id_b or ""))["lines"])
 
             await check("two server processes work on separate pages at the same time", two_processes)
+
+            async def latency() -> None:
+                before = server_children()
+                async with Client(params) as client:
+                    fresh = Server(client)
+                    (pid_fresh,) = server_children() - before
+
+                    async def timed(name: str, args: dict[str, Any] | None = None) -> float:
+                        started = time.monotonic()
+                        result = await fresh.call(name, args)
+                        elapsed = time.monotonic() - started
+                        assert not result.is_error, result.text
+                        return elapsed
+
+                    cold = await timed("notebooks")
+                    hot_notebooks = [await timed("notebooks") for _ in range(10)]
+                    page_args = {"pageId": state["page_id"]}
+                    paragraphs = len((await read_page(fresh, state["page_id"]))["lines"])
+                    hot_reads = [await timed("read_page", page_args) for _ in range(10)]
+                    workers_before = (await windows_workers())[pid_fresh]
+
+                    broken = await fresh.call(
+                        "read_page", {"pageId": "{00000000-0000-0000-0000-000000000000}{1}{B0}"}
+                    )
+                    assert broken.is_error
+                    after_error = await timed("notebooks")
+                    workers_after = (await windows_workers())[pid_fresh]
+                    assert workers_before == workers_after and len(workers_after) == 1, "worker restarted"
+
+                n50, r50 = statistics.median(hot_notebooks), statistics.median(hot_reads)
+                print(
+                    f"     first call {cold * 1000:.0f} ms; hot notebooks p50 {n50 * 1000:.0f} ms "
+                    f"(max {max(hot_notebooks) * 1000:.0f}); hot read_page p50 {r50 * 1000:.0f} ms "
+                    f"(max {max(hot_reads) * 1000:.0f}, {paragraphs} paragraphs); "
+                    f"after an error {after_error * 1000:.0f} ms"
+                )
+                assert cold <= 2.5, f"first call took {cold:.2f} s"
+                assert n50 <= 0.2, f"notebooks p50 {n50 * 1000:.0f} ms"
+                assert r50 <= 0.3, f"read_page p50 {r50 * 1000:.0f} ms"
+                assert after_error <= 0.5, f"call after an error took {after_error * 1000:.0f} ms"
+
+            await check("a fresh server answers hot calls within the latency gates", latency)
+
+            async def errors_keep_the_worker() -> None:
+                bridge = PowerShellBridge(BRIDGE_SCRIPT, "onenote")
+                try:
+                    await bridge("ping", {})
+                    pid = bridge.worker_pid
+                    assert pid
+                    cases = [
+                        ("unknown_op", {}, {"unknown_op"}),
+                        ("pages", {}, {"invalid_request"}),
+                        (
+                            "read_page",
+                            {"pageId": "{00000000-0000-0000-0000-000000000000}{1}{B0}"},
+                            {"not_found", "com_error"},
+                        ),
+                        ("read_page", {}, {"invalid_request"}),
+                    ]
+                    for op, args, codes in cases:
+                        try:
+                            await bridge(op, args)
+                        except BridgeError as error:
+                            assert error.code in codes, f"{op}: {error.code} {error}"
+                        else:
+                            raise AssertionError(f"{op} did not fail")
+                        await bridge("ping", {})
+                        assert bridge.worker_pid == pid, f"worker restarted after {op}"
+                finally:
+                    await bridge.close()
+
+            await check("bridge errors of every kind leave the same worker running", errors_keep_the_worker)
+
+            async def sigkill_leaves_nothing() -> None:
+                before = server_children()
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "deskhand",
+                    "onenote",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                assert process.stdin and process.stdout
+                to_server, from_server = process.stdin, process.stdout
+                try:
+
+                    async def send(message: dict[str, Any]) -> None:
+                        to_server.write((json.dumps(message) + "\n").encode())
+                        await to_server.drain()
+
+                    async def answer(request_id: int) -> None:
+                        while True:
+                            line = await asyncio.wait_for(from_server.readline(), 60)
+                            assert line, "server closed its output"
+                            if json.loads(line).get("id") == request_id:
+                                return
+
+                    await send(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {
+                                "protocolVersion": "2025-06-18",
+                                "capabilities": {},
+                                "clientInfo": {"name": "live", "version": "0"},
+                            },
+                        }
+                    )
+                    await answer(1)
+                    await send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                    await send(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 2,
+                            "method": "tools/call",
+                            "params": {"name": "notebooks", "arguments": {}},
+                        }
+                    )
+                    await answer(2)
+                    (pid,) = server_children() - before
+                    (worker,) = (await windows_workers())[pid]
+                    assert await windows_process_exists(worker)
+                    os.kill(pid, signal.SIGKILL)
+                    await process.wait()
+                    deadline = time.monotonic() + 90
+                    while await windows_process_exists(worker):
+                        assert time.monotonic() < deadline, "the Windows worker outlived its killed server"
+                        await asyncio.sleep(2)
+                finally:
+                    if process.returncode is None:
+                        process.kill()
+                        await process.wait()
+
+            await check("a SIGKILLed server leaves no Windows worker behind", sigkill_leaves_nothing)
+
+            async def workers_never_restarted() -> None:
+                workers = await windows_workers()
+                assert workers.get(pid_a) == [first_worker["a"]], workers
+                assert len(workers.get(pid_b, [])) == 1, workers
+
+            await check("neither server restarted its worker during the run", workers_never_restarted)
 
             async def delete() -> None:
                 page_id = state["page_id"]

@@ -36,18 +36,58 @@ The rest of this file explains _why_, but these are the rules to keep:
 | `tools.py`               | The ten tools, the dry-run/apply flow, image file reading and base64 encoding |
 | `schemas.py`             | Input and output schemas (loose: OneNote may add fields)                      |
 | `format.py`              | Text rendering and normalisation of bridge results (PowerShell array quirks)  |
-| `bridge.ps1`             | The whole COM layer, run as a one-shot `powershell.exe` process per call      |
-| `../core/powershell.py`  | Transport: request/response files, bootstrap, timeouts, `outcome_unknown`     |
+| `bridge.ps1`             | The whole COM layer, run by one resident `powershell.exe` per server process  |
+| `../core/powershell.py`  | Transport: worker lifecycle, request/response files, timeouts, `outcome_unknown` |
 
-**Why one process per call instead of a resident worker:** a warm
-`New-Object -ComObject OneNote.Application` costs **6-11 ms** (cold: 226 ms), so PowerShell process
-startup dominates and a resident worker with its own lifecycle buys almost nothing. Measured, not
-assumed.
+**Why a resident worker:** a call used to start a fresh `powershell.exe`, which cost about 0.5 s for the bare
+process, about 0.3 s for `Invoke-Expression` of this 900-line file and the first `ConvertFrom-Json`, and the
+process exit. A whole call measured about **1.6 s** at p50. The COM work itself is small: a fresh
+`New-Object -ComObject OneNote.Application` costs 15-22 ms and `GetHierarchy` 50-80 ms. So each server process
+now starts **one** `powershell.exe` on its first call, loads this file once and keeps it. Measured with the live
+suite on the development machine: the first call takes about **2.1 s** (temp-directory probe, worker start of
+about 1.4 s, then the call), and later calls take about **70-100 ms** (`notebooks` p50 94 ms, `read_page` of an
+11-paragraph page p50 67 ms). Two clients are two server processes and so two workers; OneNote's COM server
+serialises them. A Windows-side Python or a TCP/named-pipe tunnel was rejected: the WSL interop stdin/stdout of
+`powershell.exe` is already the tunnel, and per-process start-up was never the language's fault.
+`DESKHAND_LOG=info` logs each call's duration and whether it started the worker.
 
-A whole call measured about **1.6 s** at p50 (`notebooks`, 8 calls, warm; the first call 2.1 s). A bare
-`powershell.exe -NoProfile` start is about 0.5 s, so the rest is parsing the 900-line script and the COM
-work. `DESKHAND_LOG=info` logs each call's duration to stderr. If this becomes a problem, the answer is a
-resident Windows-side worker, not tuning the Linux side.
+### Worker protocol
+
+`core/powershell.py` writes `bridge.ps1` to `worker-<server pid>-<uuid>.ps1` in the work directory and starts
+`powershell.exe -EncodedCommand` with a bootstrap that `Invoke-Expression`s that file. The file ends with the
+worker loop, so the bootstrap never returns. The Python side deletes the file once the worker is ready.
+
+| Direction | Content |
+| --------- | ------- |
+| worker stdout | `deskhand-ready 1 <windows pid>` once, then `deskhand-done <stem>` after each call |
+| worker stdin  | one call stem per line (`[0-9A-Za-z-]+`); EOF ends the worker |
+| files         | `req-<stem>.json` in, `resp-<stem>.json` out, UTF-8, in the work directory |
+
+Rules that keep it correct:
+
+- **A worker is reused only after the `deskhand-done` line of the current stem.** Every other outcome
+  (timeout, cancellation, EOF, a protocol error) kills the worker and forgets it before the first `await`: the MCP
+  SDK cancels handlers with an anyio scope that re-raises at every `await`, so cleanup cannot wait.
+- A stem that could not be written (broken pipe) is sent again to a fresh worker, apply included, because the
+  worker never saw it. A worker that exits after the stem was sent gives `bridge_failed`, or `outcome_unknown`
+  for an apply. Reads are not retried.
+- Calls run one at a time (an `asyncio.Lock`). The 180 s timeout counts from sending the stem, not from waiting
+  for the lock.
+- A worker that has been idle for 30 minutes is closed by closing its stdin; the next call starts a new one.
+  Closing the server (the MCP lifespan) does the same, killing it after 2 s.
+- **`bridge.ps1` must never `exit`.** An exit between writing a response and printing `deskhand-done` would make a
+  finished write look lost. Stop a call with `Fail` (writes the error response, then throws) or `return`.
+  `tests/unit/test_bridge_script.py` enforces this and checks that the file parses in Windows PowerShell 5.1.
+- `Fail` is control flow. The catch in `Invoke-Request` tells it apart from a real error by the
+  `$script:RESPONDED` flag, never by the message: an exception thrown through a .NET callback arrives wrapped.
+  The first response written is final.
+- PowerShell variables are dynamically scoped: an unassigned name resolves in the worker's globals. `Invoke-Request`
+  therefore starts with `$onenote = $null`, and the worker loop's own variables are prefixed `$__dh`.
+  `break`/`continue` also propagate up the call stack to the nearest enclosing loop, so do not use them outside
+  a loop in the same function.
+- The COM object is created per call, not kept: after OneNote restarts, a kept reference would be stale.
+- stdout carries only the protocol. The worker loop runs each call with `*> $null`, so a stray warning cannot
+  splice into a protocol line; Python also ignores any line that is not `deskhand-done <current stem>`.
 
 ## Tool surface
 
@@ -84,8 +124,8 @@ the dotfiles repository (`pi/extensions/deskhand`).
 These are not stylistic. Each one cost real debugging time and must stay as it is.
 
 - **The script is never run with `-File`.** Windows PowerShell 5.1 decodes a BOM-less file as ANSI,
-  which destroys every CJK literal. `core/powershell.py` reads `bridge.ps1` as UTF-8 and hands it to a
-  ~200-character `-EncodedCommand` bootstrap _through the request file_.
+  which destroys every CJK literal. `core/powershell.py` writes `bridge.ps1` as UTF-8 to `worker-<id>.ps1` and
+  hands it to a ~200-character `-EncodedCommand` bootstrap that reads it back with an explicit encoding.
 - **Paths never ride in environment variables.** WSL interop does not forward the Linux environment
   to Windows executables and ignores `WSLENV` in that direction, so the bootstrap carries the work
   directory instead.
@@ -102,13 +142,15 @@ These are not stylistic. Each one cost real debugging time and must stay as it i
   access falls through to the type's members, so an absent field named `remove` returns
   `Hashtable.Remove`'s overload list instead of `$null`. This produced an error message containing
   a method signature.
-- **The child must not inherit the server's stdin.** `powershell.exe` is started with `stdin=DEVNULL`;
-  otherwise it shares the MCP connection's input and can swallow JSON-RPC.
-- **Cancelling and timing out are different.** A client cancel kills the child and propagates the
-  cancellation. Only the 180 s timeout becomes `bridge_failed`, or `outcome_unknown` for an apply.
+- **The worker never inherits the server's stdin.** It gets its own pipe (`stdin=PIPE`); sharing the MCP
+  connection's input would let it swallow JSON-RPC.
+- **Cancelling and timing out are different.** A client cancel kills the worker and propagates the
+  cancellation. Only the 180 s timeout becomes `bridge_failed`, or `outcome_unknown` for an apply. Either way
+  the next call starts a new worker.
 - **Process lifetime (measured).** Killing the WSL-side `powershell.exe` stub, which is what a timeout or
-  cancel does, also ends the Windows process. SIGKILL of the _server_ does not: the Windows process then
-  runs to completion on its own, so an in-flight write can still land after the server is gone.
+  cancel does, also ends the Windows process. When the _server_ is SIGKILLed, the worker's stdin reaches EOF
+  and the Windows process leaves on its own: at once when idle, and after the call in flight when busy. So an
+  in-flight write can still land after the server is gone. `tests/live/onenote.py` checks that no worker is left.
 - **Function parameters that must accept `$null` are left untyped.** Declaring `[string]$newText`
   makes PowerShell convert a `$null` argument into `""`, which silently turned "leave this paragraph
   alone" into "replace its text with nothing".
@@ -211,10 +253,12 @@ changed, and feeding back the value just read protects nothing. Instead:
 ## Testing
 
 - `uv run pytest` runs the unit tests against a fake bridge through an in-memory MCP client, the transport
-  against a fake `powershell.exe`, and replays `tests/parity/scenario.json` against the transcripts recorded
+  against a fake resident `powershell.exe` that speaks the worker protocol, static checks on `bridge.ps1`, and replays `tests/parity/scenario.json` against the transcripts recorded
   from the TypeScript implementation. They need neither Windows nor OneNote.
 - `DESKHAND_LIVE_NOTEBOOK="<notebook>" uv run python tests/live/onenote.py` starts two real server processes against
   the OneNote desktop client. It creates the section `deskhand-probe` if it is missing and leaves it
   in place, and it deletes every page it created. Run it from WSL after any change to `bridge.ps1`
-  or the transport; it covers the lifecycle, token refusal, `changed_since_preview`, tables, images
-  and two processes working at once.
+  or the transport; it covers the lifecycle, token refusal, `changed_since_preview`, tables, images,
+  two processes working at once, one worker per server that survives every kind of bridge error, no worker left
+  after a SIGKILL of the server, and the latency gates (first call <= 2.5 s, hot `notebooks` p50 <= 200 ms, hot
+  `read_page` p50 <= 300 ms; it prints the measured numbers).

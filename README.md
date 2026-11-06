@@ -33,6 +33,10 @@ Register the server with an MCP client as a stdio command:
 
 The server logs to stderr only; stdout carries JSON-RPC.
 
+The first tool call of a server process starts one `powershell.exe` (about 2 s). That process stays
+alive and answers later calls in under 100 ms; it exits when the client closes the server, or after 30
+idle minutes, and the next call starts a new one.
+
 ### OneNote tools
 
 | Tool                                                       | Kind                                    |
