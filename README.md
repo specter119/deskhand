@@ -1,4 +1,6 @@
-# deskhand
+# deskhand (TypeScript branch)
+
+> This is the frozen TypeScript implementation. `master` is the Python rewrite, which behaves the same.
 
 MCP servers that drive live Windows desktop applications from WSL, so an agent can read and edit
 what you already have open. Each application is its own server; they share only a small core.
@@ -13,7 +15,7 @@ Requirements: WSL 2 with Windows interop, Node.js 20 or newer, and the OneNote d
 ## Install
 
 ```sh
-npm install -g https://codeload.github.com/specter119/deskhand/tar.gz/refs/heads/master
+npm install -g https://codeload.github.com/specter119/deskhand/tar.gz/refs/heads/ts
 deskhand --version
 ```
 

@@ -1,0 +1,4598 @@
+{
+  "files": {
+    "big.png": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "probe.png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  },
+  "steps": [
+    {
+      "name": "notebooks",
+      "tool": "notebooks",
+      "args": {},
+      "bridge": {
+        "notebooks": {
+          "any": {
+            "notebooks": [
+              {
+                "id": "{N1}",
+                "name": "笔记本 A",
+                "path": "/n/a",
+                "sections": {
+                  "id": "{S1}",
+                  "name": "区段 1",
+                  "path": "/n/a/1"
+                }
+              },
+              {
+                "id": "{N2}",
+                "name": "Empty",
+                "path": "/n/e",
+                "sections": []
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "pages",
+      "tool": "pages",
+      "args": {
+        "notebook": "笔记本 A",
+        "section": "区段 1"
+      },
+      "bridge": {
+        "pages": {
+          "any": {
+            "sectionId": "{S1}",
+            "section": "区段 1",
+            "pages": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "created": "2026-01-02T03:04:05.000Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "search",
+      "tool": "search",
+      "args": {
+        "query": "调研",
+        "limit": 5
+      },
+      "bridge": {
+        "search": {
+          "any": {
+            "total": 3,
+            "returned": 1,
+            "pages": {
+              "pageId": "{P1}{1}{B0}",
+              "page": "调研 🚀",
+              "section": "区段 1",
+              "notebook": "笔记本 A"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "read_page",
+      "tool": "read_page",
+      "args": {
+        "pageId": "{P1}{1}{B0}"
+      },
+      "bridge": {
+        "read_page": {
+          "any": {
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "read_page_collapsed",
+      "tool": "read_page",
+      "args": {
+        "pageId": "{P1}{1}{B0}"
+      },
+      "bridge": {
+        "read_page": {
+          "any": {
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": {
+                "inTitle": false,
+                "inTable": false,
+                "hasImage": false,
+                "hasTable": false,
+                "hasInk": false,
+                "list": "",
+                "depth": 0,
+                "quickStyle": "",
+                "alignment": "",
+                "index": 1,
+                "objectID": "{oe-1}",
+                "text": "含 <尖括号> 与 & 符号",
+                "outlineID": "{ol-1}"
+              },
+              "outlines": {
+                "objectID": "{ol-1}",
+                "x": 36.0,
+                "y": 86.4,
+                "z": 0,
+                "width": 300.25,
+                "height": 120.0,
+                "inTitle": false,
+                "lineCount": 5
+              },
+              "images": [],
+              "tables": {
+                "objectID": "{tb-1}",
+                "rows": 2,
+                "columns": 3,
+                "outlineID": "{ol-1}"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "create_dry",
+      "tool": "create_page",
+      "args": {
+        "notebook": "笔记本 A",
+        "section": "区段 1",
+        "title": "新页 🚀",
+        "lines": ["第一段", "second <b>&"]
+      },
+      "bridge": {
+        "create_page": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-c",
+            "sectionId": "{S1}",
+            "section": "区段 1"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-c",
+            "sectionId": "{S1}",
+            "section": "区段 1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "create_apply",
+      "tool": "create_page",
+      "applyFrom": "create_dry",
+      "args": {
+        "notebook": "笔记本 A",
+        "section": "区段 1",
+        "title": "新页 🚀",
+        "lines": ["第一段", "second <b>&"]
+      },
+      "bridge": {
+        "create_page": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-c",
+            "sectionId": "{S1}",
+            "section": "区段 1"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-c",
+            "sectionId": "{S1}",
+            "section": "区段 1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "append_dry",
+      "tool": "append_lines",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "lines": ["追加 1", "追加 2"]
+      },
+      "bridge": {
+        "append": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-a",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-a",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "append_apply",
+      "tool": "append_lines",
+      "applyFrom": "append_dry",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "lines": ["追加 1", "追加 2"]
+      },
+      "bridge": {
+        "append": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-a",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-a",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "edit_dry",
+      "tool": "edit",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "set": [
+          {
+            "objectID": "{oe-1}",
+            "text": "改后 <x>"
+          }
+        ],
+        "remove": ["{oe-3}"],
+        "append": [
+          {
+            "objectID": "{ol-1}",
+            "lines": ["尾部 🚀"]
+          }
+        ]
+      },
+      "bridge": {
+        "edit": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-e",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "changes": [
+              {
+                "outlineId": "{ol-1}",
+                "changed": {
+                  "objectID": "{oe-1}",
+                  "before": "含 <尖括号> 与 & 符号",
+                  "after": "改后 <x>"
+                },
+                "removed": [
+                  {
+                    "objectID": "{oe-3}",
+                    "text": "第一行\n第二行"
+                  }
+                ],
+                "after": ["改后 <x>", "带 emoji 🚀 的列表", "尾部 🚀"]
+              }
+            ]
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-e",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "changes": [
+              {
+                "outlineId": "{ol-1}",
+                "changed": {
+                  "objectID": "{oe-1}",
+                  "before": "含 <尖括号> 与 & 符号",
+                  "after": "改后 <x>"
+                },
+                "removed": [
+                  {
+                    "objectID": "{oe-3}",
+                    "text": "第一行\n第二行"
+                  }
+                ],
+                "after": ["改后 <x>", "带 emoji 🚀 的列表", "尾部 🚀"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "edit_apply",
+      "tool": "edit",
+      "applyFrom": "edit_dry",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "set": [
+          {
+            "objectID": "{oe-1}",
+            "text": "改后 <x>"
+          }
+        ],
+        "remove": ["{oe-3}"],
+        "append": [
+          {
+            "objectID": "{ol-1}",
+            "lines": ["尾部 🚀"]
+          }
+        ]
+      },
+      "bridge": {
+        "edit": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-e",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "changes": [
+              {
+                "outlineId": "{ol-1}",
+                "changed": {
+                  "objectID": "{oe-1}",
+                  "before": "含 <尖括号> 与 & 符号",
+                  "after": "改后 <x>"
+                },
+                "removed": [
+                  {
+                    "objectID": "{oe-3}",
+                    "text": "第一行\n第二行"
+                  }
+                ],
+                "after": ["改后 <x>", "带 emoji 🚀 的列表", "尾部 🚀"]
+              }
+            ]
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-e",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "changes": [
+              {
+                "outlineId": "{ol-1}",
+                "changed": {
+                  "objectID": "{oe-1}",
+                  "before": "含 <尖括号> 与 & 符号",
+                  "after": "改后 <x>"
+                },
+                "removed": [
+                  {
+                    "objectID": "{oe-3}",
+                    "text": "第一行\n第二行"
+                  }
+                ],
+                "after": ["改后 <x>", "带 emoji 🚀 的列表", "尾部 🚀"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "edit_nochange",
+      "tool": "edit",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "set": [
+          {
+            "objectID": "{oe-1}",
+            "text": "same"
+          }
+        ]
+      },
+      "bridge": {
+        "edit": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-n",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [],
+              "outlines": [],
+              "images": [],
+              "tables": []
+            },
+            "changes": []
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-n",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [],
+              "outlines": [],
+              "images": [],
+              "tables": []
+            },
+            "changes": []
+          }
+        }
+      }
+    },
+    {
+      "name": "table_dry",
+      "tool": "insert_table",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "headers": ["列 A", "列 B"],
+        "rows": [["1", "<2>"], ["3", "4"]],
+        "hasHeaderRow": true,
+        "bordersVisible": true,
+        "columnWidths": [100, 80.0]
+      },
+      "bridge": {
+        "insert_table": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-t",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "table",
+            "outlineId": ""
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-t",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "table",
+            "outlineId": ""
+          }
+        }
+      }
+    },
+    {
+      "name": "table_apply",
+      "tool": "insert_table",
+      "applyFrom": "table_dry",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "headers": ["列 A", "列 B"],
+        "rows": [["1", "<2>"], ["3", "4"]],
+        "hasHeaderRow": true,
+        "bordersVisible": true,
+        "columnWidths": [100, 80.0]
+      },
+      "bridge": {
+        "insert_table": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-t",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "table",
+            "outlineId": ""
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-t",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "table",
+            "outlineId": ""
+          }
+        }
+      }
+    },
+    {
+      "name": "image_dry",
+      "tool": "insert_image",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "path": "$TMP/probe.png",
+        "alt": "图",
+        "width": 72.0,
+        "height": 36,
+        "outline": "{ol-1}"
+      },
+      "bridge": {
+        "insert_image": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-i",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "image",
+            "outlineId": "{ol-1}"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-i",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "image",
+            "outlineId": "{ol-1}"
+          }
+        }
+      }
+    },
+    {
+      "name": "image_apply",
+      "tool": "insert_image",
+      "applyFrom": "image_dry",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "path": "$TMP/probe.png",
+        "alt": "图",
+        "width": 72.0,
+        "height": 36,
+        "outline": "{ol-1}"
+      },
+      "bridge": {
+        "insert_image": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-i",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "image",
+            "outlineId": "{ol-1}"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-i",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            },
+            "kind": "image",
+            "outlineId": "{ol-1}"
+          }
+        }
+      }
+    },
+    {
+      "name": "delete_dry",
+      "tool": "delete_page",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "expectName": "调研 🚀"
+      },
+      "bridge": {
+        "delete_page": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-d",
+            "pageId": "{P1}{1}{B0}",
+            "name": "调研 🚀"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-d",
+            "pageId": "{P1}{1}{B0}",
+            "name": "调研 🚀"
+          }
+        }
+      }
+    },
+    {
+      "name": "delete_apply",
+      "tool": "delete_page",
+      "applyFrom": "delete_dry",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "expectName": "调研 🚀"
+      },
+      "bridge": {
+        "delete_page": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-d",
+            "pageId": "{P1}{1}{B0}",
+            "name": "调研 🚀"
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-d",
+            "pageId": "{P1}{1}{B0}",
+            "name": "调研 🚀"
+          }
+        }
+      }
+    },
+    {
+      "name": "image_big_dry",
+      "tool": "insert_image",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "path": "$TMP/big.png"
+      },
+      "bridge": {
+        "insert_image": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-b",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "p",
+              "level": "0",
+              "lang": "en-US",
+              "created": "c",
+              "lastModified": "m",
+              "lines": [],
+              "outlines": [],
+              "images": [],
+              "tables": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "err_forged_token",
+      "tool": "append_lines",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "lines": ["x"],
+        "dryRun": false,
+        "applyToken": "dh1_00000000000000000000000000000000"
+      },
+      "bridge": {
+        "append": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "err_bridge",
+      "tool": "read_page",
+      "args": {
+        "pageId": "{P1}{1}{B0}"
+      },
+      "bridge": {
+        "read_page": {
+          "error": {
+            "message": "OneNote not_found: no such page",
+            "code": "not_found"
+          }
+        }
+      }
+    },
+    {
+      "name": "err_smuggled_xml",
+      "tool": "edit",
+      "args": {
+        "pageId": "{P1}{1}{B0}",
+        "set": [
+          {
+            "objectID": "{oe-1}",
+            "text": "x",
+            "xml": "<one:OE/>"
+          }
+        ]
+      },
+      "bridge": {
+        "edit": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "err_missing_expect_name",
+      "tool": "delete_page",
+      "args": {
+        "pageId": "{P1}{1}{B0}"
+      },
+      "bridge": {
+        "delete_page": {
+          "dry": {
+            "applied": false,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          },
+          "apply": {
+            "applied": true,
+            "fingerprint": "fp-1",
+            "page": {
+              "id": "{P1}{1}{B0}",
+              "name": "调研 🚀",
+              "level": "0",
+              "lang": "zh-CN",
+              "created": "2026-01-02T03:04:05.000Z",
+              "lastModified": "2026-02-03T04:05:06.000Z",
+              "lines": [
+                {
+                  "inTitle": true,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 0,
+                  "objectID": "{oe-0}",
+                  "text": "调研 🚀",
+                  "outlineID": "{ol-t}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 1,
+                  "objectID": "{oe-1}",
+                  "text": "含 <尖括号> 与 & 符号",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "bullet",
+                  "depth": 2,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 2,
+                  "objectID": "{oe-2}",
+                  "text": "带 emoji 🚀 的列表",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 3,
+                  "objectID": "{oe-3}",
+                  "text": "第一行\n第二行",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": false,
+                  "hasImage": true,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 4,
+                  "objectID": "{oe-4}",
+                  "text": "",
+                  "outlineID": "{ol-1}"
+                },
+                {
+                  "inTitle": false,
+                  "inTable": true,
+                  "hasImage": false,
+                  "hasTable": false,
+                  "hasInk": false,
+                  "list": "",
+                  "depth": 0,
+                  "quickStyle": "",
+                  "alignment": "",
+                  "index": 5,
+                  "objectID": "{oe-5}",
+                  "text": "单元格",
+                  "outlineID": "{ol-1}"
+                }
+              ],
+              "outlines": [
+                {
+                  "objectID": "{ol-t}",
+                  "x": null,
+                  "y": null,
+                  "z": null,
+                  "width": null,
+                  "height": null,
+                  "inTitle": true,
+                  "lineCount": 1
+                },
+                {
+                  "objectID": "{ol-1}",
+                  "x": 36.0,
+                  "y": 86.4,
+                  "z": 0,
+                  "width": 300.25,
+                  "height": 120.0,
+                  "inTitle": false,
+                  "lineCount": 5
+                }
+              ],
+              "images": [
+                {
+                  "objectID": "{img-1}",
+                  "format": "png",
+                  "alt": "示意图",
+                  "x": null,
+                  "y": null,
+                  "width": 36.0,
+                  "height": 36.5,
+                  "outlineID": "{ol-1}",
+                  "embedded": true,
+                  "callbackID": "cb1"
+                },
+                {
+                  "objectID": "{img-2}",
+                  "format": "png",
+                  "alt": "",
+                  "x": null,
+                  "y": null,
+                  "width": null,
+                  "height": null,
+                  "outlineID": "",
+                  "embedded": false,
+                  "callbackID": ""
+                }
+              ],
+              "tables": [
+                {
+                  "objectID": "{tb-1}",
+                  "rows": 2,
+                  "columns": 3,
+                  "outlineID": "{ol-1}"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

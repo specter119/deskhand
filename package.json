@@ -40,7 +40,8 @@
     "lint": "biome check src tests",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "node --test tests/unit/*.test.mjs",
-    "test:live": "node tests/live/onenote.mjs"
+    "test:live": "node tests/live/onenote.mjs",
+    "parity:dump": "node tests/parity/dump.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",

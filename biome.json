@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["src/**", "tests/**"]
+    "includes": ["src/**", "tests/**", "!tests/parity/fixtures", "!tests/parity/scenario.json"]
   },
   "formatter": {
     "enabled": true,
