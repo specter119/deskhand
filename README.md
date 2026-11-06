@@ -35,7 +35,8 @@ The server logs to stderr only; stdout carries JSON-RPC.
 
 The first tool call of a server process starts one `powershell.exe` (about 2 s). That process stays
 alive and answers later calls in under 100 ms; it exits when the client closes the server, or after 30
-idle minutes, and the next call starts a new one.
+idle minutes, and the next call starts a new one. While it lives it also holds a connection to
+OneNote, so if OneNote was not open it keeps running in the background until the worker exits.
 
 ### OneNote tools
 

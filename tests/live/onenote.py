@@ -103,6 +103,10 @@ async def windows_workers() -> dict[int, list[int]]:
     return workers
 
 
+async def onenote_running() -> bool:
+    return await run_powershell("[bool](Get-Process ONENOTE -ErrorAction SilentlyContinue)") == "True"
+
+
 async def windows_process_exists(pid: int) -> bool:
     return await run_powershell(f"[bool](Get-Process -Id {pid} -ErrorAction SilentlyContinue)") == "True"
 
@@ -164,6 +168,9 @@ async def check(name: str, fn: Callable[[], Awaitable[None]]) -> None:
 
 async def main() -> int:
     created: list[str] = []
+    # When the user has not opened OneNote, COM starts it for the first call, which adds about a second.
+    was_running = await onenote_running()
+    print(f"OneNote was {'already' if was_running else 'not'} running")
     print(f"section {SECTION}: {(await ensure_section()).split(' ')[0]}")
 
     async with AsyncExitStack() as stack:
@@ -437,7 +444,8 @@ async def main() -> int:
                     f"(max {max(hot_reads) * 1000:.0f}, {paragraphs} paragraphs); "
                     f"after an error {after_error * 1000:.0f} ms"
                 )
-                assert cold <= 2.5, f"first call took {cold:.2f} s"
+                limit = 2.5 if was_running else 4.0
+                assert cold <= limit, f"first call took {cold:.2f} s (limit {limit} s)"
                 assert n50 <= 0.2, f"notebooks p50 {n50 * 1000:.0f} ms"
                 assert r50 <= 0.3, f"read_page p50 {r50 * 1000:.0f} ms"
                 assert after_error <= 0.5, f"call after an error took {after_error * 1000:.0f} ms"
@@ -556,6 +564,25 @@ async def main() -> int:
                 assert await page_id_of(title) is None
 
             await check("delete_page checks the name, then removes the page", delete)
+
+            async def survives_onenote_restart() -> None:
+                if was_running:
+                    print("     skipped: OneNote was open before the run, so it is not killed")
+                    return
+                bridge = PowerShellBridge(BRIDGE_SCRIPT, "onenote")
+                try:
+                    await bridge("ping", {})
+                    pid = bridge.worker_pid
+                    assert pid
+                    assert await onenote_running(), "the worker's COM reference should keep OneNote running"
+                    await run_powershell("Stop-Process -Name ONENOTE -Force")
+                    await asyncio.sleep(1)
+                    await bridge("ping", {})
+                    assert bridge.worker_pid == pid, "the worker restarted instead of reconnecting"
+                finally:
+                    await bridge.close()
+
+            await check("a worker reconnects after OneNote exits between calls", survives_onenote_restart)
         finally:
             for page_id in created:
                 pages = (await a.call("pages", WHERE)).data["pages"]

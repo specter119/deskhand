@@ -43,7 +43,7 @@ The rest of this file explains _why_, but these are the rules to keep:
 process, about 0.3 s for `Invoke-Expression` of this 900-line file and the first `ConvertFrom-Json`, and the
 process exit. A whole call measured about **1.6 s** at p50. The COM work itself is small: a fresh
 `New-Object -ComObject OneNote.Application` costs 15-22 ms and `GetHierarchy` 50-80 ms. So each server process
-now starts **one** `powershell.exe` on its first call, loads this file once and keeps it. Measured with the live
+now starts **one** `powershell.exe` on its first call, loads this file once and keeps it, together with the OneNote COM object (see below). Measured with the live
 suite on the development machine: the first call takes about **2.1 s** (temp-directory probe, worker start of
 about 1.4 s, then the call), and later calls take about **70-100 ms** (`notebooks` p50 94 ms, `read_page` of an
 11-paragraph page p50 67 ms). Two clients are two server processes and so two workers; OneNote's COM server
@@ -85,7 +85,14 @@ Rules that keep it correct:
   therefore starts with `$onenote = $null`, and the worker loop's own variables are prefixed `$__dh`.
   `break`/`continue` also propagate up the call stack to the nearest enclosing loop, so do not use them outside
   a loop in the same function.
-- The COM object is created per call, not kept: after OneNote restarts, a kept reference would be stale.
+- **The OneNote COM object is kept for the life of the worker** (`Get-OneNote`). When the user has not opened
+  OneNote, COM starts `ONENOTE.EXE` for the first object and ends it as soon as the last one is released
+  (measured: five create/release cycles, five restarts, 0.9-1.0 s each; with OneNote already open the same call
+  takes 15-22 ms). Releasing per call therefore cost about 0.9 s per call and sometimes raced the shutdown with
+  `0x800706BF` ("remote procedure call failed") on the next `New-Object`. Each call probes the kept object with
+  `GetHierarchy('', 0)` and builds a new one when the probe throws, which covers OneNote being closed or
+  crashing between calls. The probe runs before any write is sent. Side effect: while a worker lives, OneNote
+  keeps running in the background, up to 30 idle minutes after the last call.
 - stdout carries only the protocol. The worker loop runs each call with `*> $null`, so a stray warning cannot
   splice into a protocol line; Python also ignores any line that is not `deskhand-done <current stem>`.
 
@@ -259,6 +266,6 @@ changed, and feeding back the value just read protects nothing. Instead:
   the OneNote desktop client. It creates the section `deskhand-probe` if it is missing and leaves it
   in place, and it deletes every page it created. Run it from WSL after any change to `bridge.ps1`
   or the transport; it covers the lifecycle, token refusal, `changed_since_preview`, tables, images,
-  two processes working at once, one worker per server that survives every kind of bridge error, no worker left
-  after a SIGKILL of the server, and the latency gates (first call <= 2.5 s, hot `notebooks` p50 <= 200 ms, hot
+  two processes working at once, a worker reconnecting after OneNote exits (only when the run started OneNote itself), one worker per server that survives every kind of bridge error, no worker left
+  after a SIGKILL of the server, and the latency gates (first call <= 2.5 s, or <= 4 s when the run had to start OneNote; hot `notebooks` p50 <= 200 ms, hot
   `read_page` p50 <= 300 ms; it prints the measured numbers).

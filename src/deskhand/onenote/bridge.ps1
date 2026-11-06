@@ -724,6 +724,34 @@ function Get-RequestedLines($req) {
 	return @($lines)
 }
 
+# --- OneNote connection -----------------------------------------------------
+
+# The application object is kept for the life of the worker. When the user has not opened OneNote, COM starts
+# ONENOTE.EXE for the first object and ends it when the last one is released, so creating and releasing an
+# object per call restarted OneNote every time (~0.9 s) and sometimes raced its shutdown (0x800706BF). A kept
+# object is probed before each call and replaced when OneNote has gone away since the last one.
+$script:OneNoteApp = $null
+
+function Reset-OneNote {
+	if ($null -ne $script:OneNoteApp) {
+		try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($script:OneNoteApp) } catch {}
+		$script:OneNoteApp = $null
+	}
+}
+
+function Get-OneNote {
+	if ($null -ne $script:OneNoteApp) {
+		try {
+			$probe = ''
+			$script:OneNoteApp.GetHierarchy('', 0, [ref]$probe)
+			return $script:OneNoteApp
+		}
+		catch { Reset-OneNote }
+	}
+	$script:OneNoteApp = New-Object -ComObject OneNote.Application
+	return $script:OneNoteApp
+}
+
 # --- main -------------------------------------------------------------------
 
 function Invoke-Request([string]$stem) {
@@ -737,13 +765,13 @@ function Invoke-Request([string]$stem) {
 		$sw = [Diagnostics.Stopwatch]::StartNew()
 
 		if ($op -eq 'ping') {
-			$onenote = New-Object -ComObject OneNote.Application
+			$onenote = Get-OneNote
 			$xml = Get-HierarchyXml $onenote '' 3
 			Write-Response @{ ok = $true; data = @{ ready = $true; hierarchyChars = $xml.Length; elapsedMs = [int]$sw.ElapsedMilliseconds } }
 			return
 		}
 
-		$onenote = New-Object -ComObject OneNote.Application
+		$onenote = Get-OneNote
 
 		switch ($op) {
 			'notebooks' {
@@ -955,7 +983,6 @@ function Invoke-Request([string]$stem) {
 		Write-Response @{ ok = $false; error = ($msg -replace "`r?`n", ' '); code = 'com_error' }
 	}
 	finally {
-		if ($null -ne $onenote) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($onenote) }
 		$script:RESP = $null
 	}
 }
@@ -987,3 +1014,4 @@ while ($null -ne ($__dhLine = $__dhIn.ReadLine())) {
 	$Error.Clear()
 	$__dhOut.WriteLine('deskhand-done ' + $__dhStem)
 }
+Reset-OneNote
