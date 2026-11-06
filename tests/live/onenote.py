@@ -13,6 +13,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import signal
 import statistics
 import struct
@@ -28,7 +29,7 @@ from typing import Any
 
 from mcp import Client, StdioServerParameters
 
-from deskhand.core.powershell import BridgeError, PowerShellBridge
+from deskhand.core.powershell import BridgeError, PowerShellBridge, work_dir_from_temp
 from deskhand.onenote.server import BRIDGE_SCRIPT
 
 NOTEBOOK = os.environ.get("DESKHAND_LIVE_NOTEBOOK")
@@ -109,6 +110,47 @@ async def onenote_running() -> bool:
 
 async def windows_process_exists(pid: int) -> bool:
     return await run_powershell(f"[bool](Get-Process -Id {pid} -ErrorAction SilentlyContinue)") == "True"
+
+
+async def lone_background_onenote() -> int | None:
+    """The pid of the only ONENOTE.EXE when it is safe to kill, else None.
+
+    Safe means: one process, started by COM (-Embedding) with no window, and no deskhand worker that this run
+    did not start, so a session the user has open somewhere is never interrupted.
+    """
+    listing = await run_powershell(
+        "Get-CimInstance Win32_Process -Filter \"Name='ONENOTE.EXE'\" | ForEach-Object { "
+        "'{0}|{1}|{2}' -f $_.ProcessId, "
+        "[bool](Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }), "
+        "$_.CommandLine }"
+    )
+    rows = [line.split("|", 2) for line in listing.splitlines() if line.strip()]
+    if len(rows) != 1 or rows[0][1] != "False" or "-Embedding" not in rows[0][2]:
+        return None
+    ours = {os.getpid(), *server_children()}
+    if set(await windows_workers()) - ours:
+        return None
+    return int(rows[0][0])
+
+
+async def update_page_directly(page_id: str, xml_body: str) -> str:
+    """Sends UpdatePageContent through COM with the bridge's own classification and returns '<hex> <code>'."""
+    temp = await run_powershell("[IO.Path]::GetTempPath()")
+    work = work_dir_from_temp(temp, f"live-{os.getpid()}")
+    work.wsl.mkdir(parents=True, exist_ok=True)
+    try:
+        head = BRIDGE_SCRIPT.read_text("utf-8").split("# --- worker loop", 1)[0]
+        (work.wsl / "head.ps1").write_text(head, encoding="utf-8")
+        ns = "http://schemas.microsoft.com/office/onenote/2013/onenote"
+        return await run_powershell(
+            f"Invoke-Expression ([IO.File]::ReadAllText({quote(work.win + chr(92) + 'head.ps1')}, [Text.Encoding]::UTF8))\n"
+            "$app = New-Object -ComObject OneNote.Application\n"
+            f"$xml = '<one:Page xmlns:one=\"{ns}\" ID=\"' + {quote(page_id)} + '\">' + {quote(xml_body)} + '</one:Page>'\n"
+            "try { $app.UpdatePageContent($xml, [DateTime]::MinValue, 2, $false); 'no-error' }\n"
+            "catch { $h = Get-HResultHex $_; $h + ' ' + (Get-WriteFailureCode $h) }"
+        )
+    finally:
+        shutil.rmtree(work.wsl, ignore_errors=True)
 
 
 class Result:
@@ -378,6 +420,15 @@ async def main() -> int:
 
             await check("insert_image adds an image bound to the file contents", image)
 
+            async def refused_by_onenote() -> None:
+                # Well-formed XML that is not in the page schema: OneNote refuses it, and force=false is accepted.
+                verdict = await update_page_directly(state["page_id"], "<one:Bogus/>")
+                assert verdict == "0x80042001 rejected", verdict
+
+            await check(
+                "a schema violation is refused with 0x80042001 and classified rejected", refused_by_onenote
+            )
+
             async def two_processes() -> None:
                 titles = [f"{TAG}-a", f"{TAG}-b"]
                 (_, ra, _), (_, rb, _) = await asyncio.gather(
@@ -575,7 +626,11 @@ async def main() -> int:
                     pid = bridge.worker_pid
                     assert pid
                     assert await onenote_running(), "the worker's COM reference should keep OneNote running"
-                    await run_powershell("Stop-Process -Name ONENOTE -Force")
+                    victim = await lone_background_onenote()
+                    if victim is None:
+                        print("     skipped: ONENOTE.EXE is not a lone windowless instance owned by this run")
+                        return
+                    await run_powershell(f"Stop-Process -Id {victim} -Force")
                     await asyncio.sleep(1)
                     await bridge("ping", {})
                     assert bridge.worker_pid == pid, "the worker restarted instead of reconnecting"

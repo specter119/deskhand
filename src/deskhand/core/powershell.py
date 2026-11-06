@@ -274,9 +274,10 @@ class PowerShellBridge:
             request_path.write_text(
                 json.dumps(compact({"op": op, **args}), ensure_ascii=True), encoding="utf-8"
             )
+            applying = args.get("apply") is True
             async with self._lock:
-                cold = await self._exchange(setup, stem, applying=args.get("apply") is True)
-            data = self._read_response(response_path)
+                cold = await self._exchange(setup, stem, applying=applying)
+            data = self._read_response(response_path, applying=applying)
             log.info("%s %.0f ms%s", op, (time.monotonic() - started) * 1000, " (cold start)" if cold else "")
             return data
         finally:
@@ -354,6 +355,12 @@ class PowerShellBridge:
             ) from None
         except ValueError:
             self._drop(worker)
+            if applying:
+                raise BridgeError(
+                    "powershell.exe wrote an over-long line while a write was in flight, so whether OneNote "
+                    "applied it is unknown. Read the page again and preview before retrying.",
+                    "outcome_unknown",
+                ) from None
             raise BridgeError(
                 "OneNote bridge failed: powershell.exe wrote an over-long line", "bridge_failed"
             ) from None
@@ -512,16 +519,22 @@ class PowerShellBridge:
             await asyncio.wait(pending, timeout=CLOSE_GRACE_S)
 
     @staticmethod
-    def _read_response(response_path: Path) -> dict[str, Any]:
+    def _read_response(response_path: Path, *, applying: bool) -> dict[str, Any]:
         try:
-            raw = response_path.read_text(encoding="utf-8-sig")
-        except OSError:
+            parsed = json.loads(response_path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            # A write that left no readable answer may still have landed, so it must not read as a plain failure.
+            if applying:
+                raise BridgeError(
+                    "OneNote bridge produced no readable response for a write, so whether OneNote applied it "
+                    "is unknown. Read the page again and preview before retrying.",
+                    "outcome_unknown",
+                ) from None
             raise BridgeError(
                 "OneNote bridge produced no response; the bridge script may have failed before it "
                 "could report an error",
                 "no_response",
             ) from None
-        parsed = json.loads(raw)
         if not parsed.get("ok"):
             code = parsed.get("code") or "error"
             raise BridgeError(f"OneNote {code}: {parsed.get('error')}", code)

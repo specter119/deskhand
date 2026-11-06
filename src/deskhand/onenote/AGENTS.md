@@ -178,14 +178,41 @@ New elements must be written **without** an `objectID`. OneNote rejects an id it
 The real signature is:
 
 ```
-UpdatePageContent(string xml, DateTime dateExpectedLastModified, XMLSchema xsSchema, out string error)
+UpdatePageContent(string xml, DateTime dateExpectedLastModified, XMLSchema xsSchema, bool force)
 ```
 
 - `xsSchema` must be **`2`** (xs2013) to match the namespace this bridge writes. `0` and `1` fail
   with `0x80042001`.
-- Naming all four arguments keeps the error channel. PowerShell accepts fewer, but then OneNote's
-  own refusals are invisible.
+- The fourth argument is `force`, **not** an error output (confirmed from the OneNote 15.0 type library).
+  It is always `$false`: with `$true` OneNote overwrites page data it does not understand. A refusal arrives
+  as an exception, never through a return value.
 - `dateExpectedLastModified` is always `MinValue` ("do not check") — see the next section.
+
+### Failures around a write
+
+Writes are the three COM calls `UpdatePageContent`, `CreateNewPage` and `DeleteHierarchy`. A refusal is only
+called a refusal when OneNote is known to have refused; anything else may have landed.
+
+| Failure                                                          | Code               |
+| ---------------------------------------------------------------- | ------------------ |
+| no COM call was made (PowerShell conversion or binding error)    | `com_error`        |
+| `0x80010001`, `0x8001010A` (turned away while busy), `0x80042024` (recording)  | `busy`             |
+| `0x80042010`                                                     | `stale`            |
+| any other `0x800420xx` except `0x80042023`                       | `rejected`         |
+| connection lost (`0x800706BA/BE/BF`, ...), `0x80042023` (OneNote's own timeout), anything unrecognised | `outcome_unknown`  |
+| the write call returned, then something else failed              | `applied_unverified` |
+
+`applied_unverified` is decided by `$script:MUTATED`, set right after a write call returns: `Fail` and the catch in
+`Invoke-Request` then rewrite whatever code they were given. This covers `create_page` (three writes: the page, the
+title, the body) and a read-back that fails after a successful write. On the Python side a write (`apply`) that
+leaves no readable response, or an over-long line, is also `outcome_unknown`.
+HRESULTs are found by walking the exception chain past `MethodInvocationException` (`Get-HResultHex`) and compared
+as upper-case strings. `tests/unit/test_bridge_behaviour.py` drives all of this against a fake OneNote object in
+Windows PowerShell 5.1.
+
+The kept OneNote object is probed before each call. A busy answer (`0x80010001`, `0x8001010A`) is waited out
+for up to 5 s and then reported as `busy`, without discarding the object; any other probe failure drops the object
+and creates a new one, retrying once after 1 s because starting OneNote can race its previous shutdown.
 
 ### The edit model
 

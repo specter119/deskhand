@@ -68,6 +68,11 @@ FAKE = textwrap.dedent(
             respond({{"ok": False, "error": "no such page", "code": "not_found"}})
         elif behave == "silent":
             pass
+        elif behave == "garbled":
+            with open(os.path.join(work, f"resp-{{stem}}.json"), "w", encoding="utf-8") as out:
+                out.write("{{not json")
+        elif behave == "longline":
+            say("x" * 2_000_000)
         else:
             if behave == "noise":
                 say("WARNING: something")
@@ -177,6 +182,29 @@ async def test_a_missing_response_is_reported_and_the_worker_stays(env):
         await bridge("read_page", {"behave": "silent"})
     assert raised.value.code == "no_response"
     assert (await bridge("b", {}))["pid"] == first["pid"]
+    await bridge.close()
+
+
+@pytest.mark.parametrize("behave", ["silent", "garbled"])
+@pytest.mark.parametrize(("apply", "code"), [(False, "no_response"), (True, "outcome_unknown")])
+async def test_a_write_without_a_readable_response_is_outcome_unknown(env, behave, apply, code):
+    bridge = env.bridge()
+    first = await bridge("a", {})
+    with pytest.raises(BridgeError) as raised:
+        await bridge("append", {"behave": behave, "apply": apply})
+    assert raised.value.code == code
+    assert (await bridge("b", {}))["pid"] == first["pid"]
+    await bridge.close()
+
+
+@pytest.mark.parametrize(("apply", "code"), [(False, "bridge_failed"), (True, "outcome_unknown")])
+async def test_an_over_long_line_during_a_write_is_outcome_unknown(env, apply, code):
+    bridge = env.bridge()
+    first = await bridge("a", {})
+    with pytest.raises(BridgeError) as raised:
+        await bridge("append", {"behave": "longline", "apply": apply})
+    assert raised.value.code == code
+    assert (await bridge("b", {}))["pid"] != first["pid"]
     await bridge.close()
 
 

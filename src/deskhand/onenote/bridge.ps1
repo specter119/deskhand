@@ -56,6 +56,9 @@ $ProgressPreference = 'SilentlyContinue'
 # so its message cannot be matched reliably.
 $script:RESP = $null
 $script:RESPONDED = $false
+# True once a COM write call has returned. From then on any failure of the same request is reported as
+# applied_unverified, because part or all of the write is already in OneNote.
+$script:MUTATED = $false
 
 function Write-Response($payload) {
 	$json = $payload | ConvertTo-Json -Depth 40 -Compress
@@ -64,6 +67,10 @@ function Write-Response($payload) {
 }
 
 function Fail([string]$message, [string]$code) {
+	if ($script:MUTATED) {
+		$code = 'applied_unverified'
+		$message = 'Part or all of this write was applied; do not retry, read the page again. ' + $message
+	}
 	Write-Response @{ ok = $false; error = $message; code = $code }
 	throw 'deskhand:responded'
 }
@@ -497,9 +504,10 @@ function New-OutlineXml([string[]]$lines, $position) {
 }
 
 # The real signature is UpdatePageContent(string xml, DateTime dateExpectedLastModified,
-# XMLSchema xsSchema, out string error). PowerShell accepts fewer arguments, but then the error
-# channel is lost, so every call names all four. xsSchema must be 2 (xs2013) because this bridge
-# writes the 2013 namespace: 0 and 1 are rejected with 0x80042001.
+# XMLSchema xsSchema, bool force). There is no error output: OneNote reports a refusal by throwing.
+# force is always false, so a page holding data from a newer OneNote is refused instead of
+# overwritten (0x80042022 is "content loss"). xsSchema must be 2 (xs2013) because this bridge writes
+# the 2013 namespace: 0 and 1 are rejected with 0x80042001.
 #
 # dateExpectedLastModified is deliberately always MinValue, which means "do not check". It cannot
 # be turned into a concurrency guard: lastModifiedTime does not advance when content is written
@@ -508,34 +516,71 @@ function New-OutlineXml([string[]]$lines, $position) {
 # therefore protects nothing while refusing legitimate writes. Appends are additive and cannot
 # clobber concurrent edits; delete_page guards on the page name instead.
 $XSCHEMA_2013 = 2
-$HR_STALE_PAGE = '0x80042010'
 
+# HRESULTs are compared as upper-case strings ('0x80042010'): a hex literal below 0x80000000 is an Int32 in
+# PowerShell 5.1 and one above it is negative, so mixing literals and formatted values invites mismatches.
+$HR_STALE_PAGE = '0x80042010'
+# The call was turned away before OneNote ran it, so nothing was written.
+$HR_BUSY = @('0x80010001', '0x8001010A')
+$HR_RECORDING = '0x80042024'
+# OneNote's own "the action timed out": it may or may not have finished the write.
+$HR_ONENOTE_TIMEOUT = '0x80042023'
+# The server went away or the connection broke, possibly after it applied the write.
+$HR_GONE = @('0x800706BA', '0x800706BE', '0x800706BF', '0x80010108', '0x80010012', '0x80010007', '0x800401FD')
+
+# The HRESULT of the first exception that is not a PowerShell or reflection wrapper, or '' when the failure
+# never reached a COM call. MethodInvocationException is what PowerShell puts around an exception thrown by a
+# method, so it is looked through. Any other exception PowerShell raised itself (a failed conversion, a binding
+# error) implements IContainsErrorRecord and means no call was made, whatever it wraps; a COM exception does not
+# implement it.
 function Get-HResultHex($errorRecord) {
-	$hresult = 0
-	if ($null -ne $errorRecord.Exception -and $null -ne $errorRecord.Exception.InnerException) {
-		$hresult = $errorRecord.Exception.InnerException.HResult
+	$e = $errorRecord.Exception
+	while ($null -ne $e) {
+		if ($e -is [Management.Automation.MethodInvocationException] -or $e -is [Reflection.TargetInvocationException] -or $e.GetType() -eq [Management.Automation.RuntimeException]) {
+			$e = $e.InnerException
+		}
+		elseif ($e -is [Management.Automation.IContainsErrorRecord]) { return '' }
+		else { break }
 	}
-	if ($hresult -eq 0 -and $null -ne $errorRecord.Exception) { $hresult = $errorRecord.Exception.HResult }
+	if ($null -eq $e) { return '' }
 	# Casting a negative Int32 straight to UInt32 throws in PowerShell; go through BitConverter.
-	$unsigned = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$hresult), 0)
+	$unsigned = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$e.HResult), 0)
 	return ('0x{0:X8}' -f $unsigned)
+}
+
+# Only a failure OneNote is known to have refused counts as a refusal. Anything unrecognised during a write
+# is outcome_unknown, because the write may have landed.
+function Get-WriteFailureCode([string]$hex) {
+	if ([string]::IsNullOrEmpty($hex)) { return 'com_error' }
+	if ($hex -in $HR_BUSY -or $hex -eq $HR_RECORDING) { return 'busy' }
+	if ($hex -eq $HR_STALE_PAGE) { return 'stale' }
+	if ($hex -like '0x800420*' -and $hex -ne $HR_ONENOTE_TIMEOUT) { return 'rejected' }
+	return 'outcome_unknown'
+}
+
+function Fail-Write($errorRecord, [string]$action) {
+	$hex = Get-HResultHex $errorRecord
+	$code = Get-WriteFailureCode $hex
+	$why = $errorRecord.Exception.Message
+	switch ($code) {
+		'stale' { Fail ('OneNote refused the update as stale (' + $hex + '); re-read the page and retry') $code }
+		'busy' { Fail ('OneNote is busy (' + $hex + ') and did not ' + $action + '; try again shortly') $code }
+		'rejected' { Fail ('OneNote refused to ' + $action + ' (' + $hex + '): ' + $why) $code }
+		'outcome_unknown' {
+			Fail ('Whether OneNote managed to ' + $action + ' is unknown (' + $hex + '): ' + $why + '. Read the page again and preview before retrying.') $code
+		}
+		default { Fail ('Could not ' + $action + ': ' + $why) $code }
+	}
 }
 
 function Send-PageUpdate($onenote, [string]$pageId, [string]$innerXml) {
 	$xml = '<one:Page xmlns:one="' + $NS + '" ID="' + $pageId + '">' + $innerXml + '</one:Page>'
 
-	$err = ''
 	try {
-		$onenote.UpdatePageContent($xml, [DateTime]::MinValue, $XSCHEMA_2013, [ref]$err)
+		$onenote.UpdatePageContent($xml, [DateTime]::MinValue, $XSCHEMA_2013, $false)
 	}
-	catch {
-		$hex = Get-HResultHex $_
-		if ($hex -eq $HR_STALE_PAGE) {
-			Fail ('OneNote refused the update as stale (' + $hex + '); re-read the page and retry') 'stale'
-		}
-		Fail ('OneNote refused the update (' + $hex + '): ' + $_.Exception.Message) 'rejected'
-	}
-	if (-not [string]::IsNullOrEmpty($err)) { Fail ('OneNote reported an update error: ' + $err) 'rejected' }
+	catch { Fail-Write $_ 'update the page' }
+	$script:MUTATED = $true
 }
 
 function Read-PageById($onenote, [string]$pageId) {
@@ -739,16 +784,38 @@ function Reset-OneNote {
 	}
 }
 
+function New-OneNoteApp { New-Object -ComObject OneNote.Application }
+
+# How long a busy OneNote (a modal dialog, a sync in progress) is waited for before giving up with 'busy'.
+$PROBE_BUSY_S = 5
+
 function Get-OneNote {
 	if ($null -ne $script:OneNoteApp) {
-		try {
-			$probe = ''
-			$script:OneNoteApp.GetHierarchy('', 0, [ref]$probe)
-			return $script:OneNoteApp
+		$deadline = [DateTime]::UtcNow.AddSeconds($PROBE_BUSY_S)
+		while ($true) {
+			try {
+				$probe = ''
+				$script:OneNoteApp.GetHierarchy('', 0, [ref]$probe)
+				return $script:OneNoteApp
+			}
+			catch {
+				if ((Get-HResultHex $_) -in $HR_BUSY) {
+					# A busy OneNote is alive, so the object stays; only a dead one is replaced.
+					if ([DateTime]::UtcNow -ge $deadline) { Fail 'OneNote is busy (a dialog may be open); try again shortly' 'busy' }
+					Start-Sleep -Milliseconds 250
+					continue
+				}
+				Reset-OneNote
+				break
+			}
 		}
-		catch { Reset-OneNote }
 	}
-	$script:OneNoteApp = New-Object -ComObject OneNote.Application
+	# Starting OneNote can race its previous shutdown (0x800706BF), so a failure gets one more try.
+	try { $script:OneNoteApp = New-OneNoteApp }
+	catch {
+		Start-Sleep -Seconds 1
+		$script:OneNoteApp = New-OneNoteApp
+	}
 	return $script:OneNoteApp
 }
 
@@ -757,6 +824,7 @@ function Get-OneNote {
 function Invoke-Request([string]$stem) {
 	$script:RESP = Join-Path $script:WORK ('resp-' + $stem + '.json')
 	$script:RESPONDED = $false
+	$script:MUTATED = $false
 	# Unassigned names resolve up the dynamic scope chain, so the worker's globals must not leak in.
 	$onenote = $null
 	try {
@@ -845,7 +913,9 @@ function Invoke-Request([string]$stem) {
 				}
 				else {
 					$newId = ''
-					$onenote.CreateNewPage($secId, [ref]$newId, 1)
+					try { $onenote.CreateNewPage($secId, [ref]$newId, 1) }
+					catch { Fail-Write $_ 'create the page' }
+					$script:MUTATED = $true
 					if (-not [string]::IsNullOrEmpty($title)) {
 						Send-PageUpdate $onenote $newId ('<one:Title><one:OE><one:T>' + (New-TextCdata $title) + '</one:T></one:OE></one:Title>')
 					}
@@ -965,7 +1035,11 @@ function Invoke-Request([string]$stem) {
 				$fingerprint = Get-Sha256Hex ('delete:' + $page.id + '|' + $page.name)
 				Assert-Fingerprint $req $fingerprint
 				$deleted = (Test-Apply $req)
-				if ($deleted) { $onenote.DeleteHierarchy($page.id) }
+				if ($deleted) {
+					try { $onenote.DeleteHierarchy($page.id) }
+					catch { Fail-Write $_ 'delete the page' }
+					$script:MUTATED = $true
+				}
 				Write-Response @{ ok = $true; data = @{ applied = $deleted; deleted = $deleted; fingerprint = $fingerprint; pageId = $page.id; name = $page.name; elapsedMs = [int]$sw.ElapsedMilliseconds } }
 			}
 
@@ -974,13 +1048,18 @@ function Invoke-Request([string]$stem) {
 	}
 	catch {
 		if ($script:RESPONDED) { return }
+		$code = 'com_error'
 		$msg = $_.Exception.Message
 		if ($null -ne $_.Exception.InnerException) { $msg = $msg + ' / ' + $_.Exception.InnerException.Message }
 		# The request body is executed through Invoke-Expression, so report the failing source line.
 		if ($null -ne $_.InvocationInfo -and -not [string]::IsNullOrEmpty($_.InvocationInfo.Line)) {
 			$msg = $msg + ' | at: ' + $_.InvocationInfo.Line.Trim()
 		}
-		Write-Response @{ ok = $false; error = ($msg -replace "`r?`n", ' '); code = 'com_error' }
+		if ($script:MUTATED) {
+			$code = 'applied_unverified'
+			$msg = 'Part or all of this write was applied; do not retry, read the page again. ' + $msg
+		}
+		Write-Response @{ ok = $false; error = ($msg -replace "`r?`n", ' '); code = $code }
 	}
 	finally {
 		$script:RESP = $null
