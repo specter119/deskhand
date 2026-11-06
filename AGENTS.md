@@ -13,7 +13,7 @@ application, a small shared core. Only `onenote` exists today.
 - `src/onenote/`: the OneNote server. Read `src/onenote/AGENTS.md` before touching `bridge.ps1`.
 - `tests/unit/`: run with `npm test`; fake bridge, in-memory MCP client, no Windows.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
-- `dist/`: committed build output. `npm install -g github:...` runs no build.
+- `dist/`: committed build output. a global install from the GitHub tarball runs no build.
 
 ## Rules
 

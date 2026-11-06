@@ -13,11 +13,12 @@ Requirements: WSL 2 with Windows interop, Node.js 20 or newer, and the OneNote d
 ## Install
 
 ```sh
-npm install -g github:specter119/deskhand
+npm install -g https://codeload.github.com/specter119/deskhand/tar.gz/refs/heads/master
 deskhand --version
 ```
 
-`dist/` is committed, so installing needs no build step.
+`dist/` is committed, so installing needs no build step. The tarball URL is deliberate: with npm 11,
+`npm install -g github:...` and `git+https:` leave a dangling link to a temporary clone.
 
 ## Use
 
