@@ -292,3 +292,61 @@ async def test_after_anchors_an_image_table_or_appended_paragraph_to_a_paragraph
         assert not edit.is_error, text_of(edit)
         assert bridge.calls[2]["args"]["append"][0]["after"] == "oe-3"
         assert "add 1 paragraph(s) to ol-1 after oe-3" in text_of(edit), text_of(edit)
+
+
+async def test_a_section_rewrite_previews_a_summary_instead_of_every_object_id():
+    removed = [{"text": f"old paragraph {index}"} for index in range(37)]
+    changes = [
+        {"outlineId": "ol-1", "changed": [], "removed": removed, "after": [f"p{i}" for i in range(33)]}
+    ]
+
+    def edit_handler(args):
+        return {"applied": args.get("apply") is True, "fingerprint": "fp-1", "changes": changes}
+
+    async with connect(FakeBridge({"edit": edit_handler})) as t:
+        result = await t.call(
+            "edit",
+            {
+                "pageId": "p1",
+                "remove": [f"oe-{index}" for index in range(37)],
+                "append": [{"objectID": "ol-1", "lines": [{"text": f"new {i}"} for i in range(4)]}],
+            },
+        )
+        text = text_of(result)
+        assert "  delete 37 paragraph(s)" in text, text
+        assert "oe-36" not in text, "objectIDs are noise in a long delete list"
+        assert '  - delete "old paragraph 0"' in text, text
+        assert "  … and 32 more deleted" in text, text
+        assert "  resulting paragraphs: 33 paragraph(s)" in text, text
+        assert "New paragraphs:" in text and "  4. new 3" in text, text
+
+
+async def test_a_short_edit_keeps_the_preview_it_always_had():
+    changes = [
+        {
+            "outlineId": "ol-1",
+            "changed": [{"before": "a", "after": "b"}],
+            "removed": [{"text": "gone"}],
+            "after": ["a", "b"],
+        }
+    ]
+
+    def edit_handler(args):
+        return {"applied": args.get("apply") is True, "fingerprint": "fp-1", "changes": changes}
+
+    async with connect(FakeBridge({"edit": edit_handler})) as t:
+        result = await t.call(
+            "edit",
+            {
+                "pageId": "p1",
+                "set": [{"objectID": "oe-1", "text": "b"}],
+                "remove": ["oe-3"],
+                "append": [{"objectID": "ol-1", "lines": ["tail"]}],
+            },
+        )
+        text = text_of(result)
+        assert "  delete oe-3" in text, text
+        assert '  ~ "a"  ->  "b"' in text, text
+        assert '  - delete "gone"' in text, text
+        assert '  resulting paragraphs: "a", "b"' in text, text
+        assert "New paragraphs:" not in text, text

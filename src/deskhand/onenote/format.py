@@ -13,9 +13,23 @@ from deskhand.core.compat import (
     js_truthy,
     num,
     truncate,
+    utf16_len,
+    utf16_slice,
 )
 
 Page = dict[str, Any]
+
+# A preview is read, not parsed: a replaced section can delete 40 paragraphs and add 30, and printing
+# every objectID, every full text and every resulting paragraph buries the one thing to check.
+MAX_REMOVED_LINES = 5
+MAX_RESULTING_LINES = 5
+TEXT_PREVIEW_CHARS = 100
+
+
+def _short(text: str, limit: int = TEXT_PREVIEW_CHARS) -> str:
+    if utf16_len(text) <= limit:
+        return text
+    return utf16_slice(text, limit) + "…"
 
 
 def normalize_page(raw: Any) -> Page:
@@ -117,11 +131,20 @@ def format_edit_changes(data: dict[str, Any]) -> str:
     for change in changes:
         out.append(f"outline {as_string(change.get('outlineId'))}")
         for item in as_array(change.get("changed")):
-            out.append(f'  ~ "{as_string(item.get("before"))}"  ->  "{as_string(item.get("after"))}"')
-        for item in as_array(change.get("removed")):
-            out.append(f'  - delete "{as_string(item.get("text"))}"')
-        after = ", ".join(json.dumps(entry, ensure_ascii=False) for entry in as_array(change.get("after")))
-        out.append(f"  resulting paragraphs: {after}")
+            before = _short(as_string(item.get("before")))
+            after_text = _short(as_string(item.get("after")))
+            out.append(f'  ~ "{before}"  ->  "{after_text}"')
+        removed = as_array(change.get("removed"))
+        for item in removed[:MAX_REMOVED_LINES]:
+            out.append(f'  - delete "{_short(as_string(item.get("text")))}"')
+        if len(removed) > MAX_REMOVED_LINES:
+            out.append(f"  … and {len(removed) - MAX_REMOVED_LINES} more deleted")
+        after = as_array(change.get("after"))
+        if len(after) > MAX_RESULTING_LINES:
+            out.append(f"  resulting paragraphs: {len(after)} paragraph(s)")
+        else:
+            listed = ", ".join(json.dumps(entry, ensure_ascii=False) for entry in after)
+            out.append(f"  resulting paragraphs: {listed}")
     return "\n".join(out)
 
 

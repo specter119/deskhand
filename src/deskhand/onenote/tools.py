@@ -99,6 +99,13 @@ def _target_label(target: Params) -> str:
     )
 
 
+def _removal_lines(remove: list[str]) -> list[str]:
+    """A long delete list is a wall of objectIDs; a reader checks the texts, which the preview shows."""
+    if len(remove) <= 3:
+        return [f"  delete {object_id}" for object_id in remove]
+    return [f"  delete {len(remove)} paragraph(s)"]
+
+
 def _placement(outline: Any, after: Any) -> str:
     """Where a block lands: a new outline, inside an existing one, or after one paragraph of it."""
     if js_truthy(after):
@@ -497,7 +504,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                     f"  replace {i['objectID']} with {json.dumps(i['text'], ensure_ascii=False)}"
                     for i in set_
                 ),
-                *(f"  delete {object_id}" for object_id in remove),
+                *_removal_lines(remove),
                 *(
                     f"  add {len(i['lines'])} paragraph(s) to {i['objectID']}"
                     + (f" after {i['after']}" if js_truthy(i.get("after")) else "")
@@ -508,10 +515,16 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
 
         def describe(data: Params, applied: bool) -> str:
             paragraphs = len(as_array(_page_of(data).get("lines")))
-            return (
-                f"{'Changed' if applied else 'Would change'}: {format_edit_changes(data)}\n\n"
+            added = [line for item in append for line in item["lines"]]
+            parts = [f"{'Changed' if applied else 'Would change'}: {format_edit_changes(data)}"]
+            # A single appended line is already visible in the intent; a rewritten section is not.
+            if len(added) > 3:
+                heading = "Added paragraphs" if applied else "New paragraphs"
+                parts.append(f"{heading}:\n{describe_lines(added)}")
+            parts.append(
                 f"{'OneNote now reports' if applied else 'The page currently has'} {paragraphs} paragraph(s)."
             )
+            return "\n\n".join(parts)
 
         plan = WritePlan(
             "edit", "edit", {**target, "set": set_, "remove": remove, "append": append}, intent, describe
