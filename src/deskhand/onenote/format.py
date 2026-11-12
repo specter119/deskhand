@@ -125,5 +125,40 @@ def format_edit_changes(data: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def describe_lines(lines: list[str]) -> str:
-    return "\n".join(f"  {index + 1}. {line}" for index, line in enumerate(lines))
+def describe_lines(lines: list[Any]) -> str:
+    """One numbered row per paragraph; a plain string renders exactly as it always has."""
+    rows = []
+    for index, line in enumerate(lines):
+        if not isinstance(line, dict):
+            rows.append(f"  {index + 1}. {line}")
+            continue
+        marks = []
+        depth = js_number(line.get("depth"))
+        if depth:
+            marks.append(f"depth={int(depth)}")
+        if line.get("list"):
+            marks.append(as_string(line.get("list")))
+        quick_style = line.get("quickStyle")
+        if quick_style is not None:
+            label = num(quick_style) if isinstance(quick_style, (int, float)) else as_string(quick_style)
+            marks.append(f"style={label}")
+        style = line.get("style")
+        if isinstance(style, dict):
+            bits = []
+            if style.get("fontSize"):
+                bits.append(f"{num(style['fontSize'])}pt")
+            if style.get("fontFamily"):
+                bits.append(as_string(style["fontFamily"]))
+            if style.get("color"):
+                bits.append(as_string(style["color"]))
+            bits.extend(
+                flag for flag in ("bold", "italic", "underline", "strikethrough") if style.get(flag) is True
+            )
+            if style.get("highlight"):
+                bits.append(f"highlight {as_string(style['highlight'])}")
+            if bits:
+                marks.append(" ".join(bits))
+        suffix = f"   [{', '.join(marks)}]" if marks else ""
+        indent = "  " * int(depth)
+        rows.append(f"  {index + 1}. {indent}{as_string(line.get('text'))}{suffix}")
+    return "\n".join(rows)

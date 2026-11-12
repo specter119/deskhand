@@ -1,0 +1,3212 @@
+{
+  "instructions": "These tools drive the Windows OneNote desktop client through its COM automation interface, from WSL.\nThey work with the user's own signed-in notebooks, so writes land in real notes that sync to SharePoint/OneDrive.\n\nIdentifying a page: prefer pageId, taken from pages or search. When only names are known, pass notebook + section + page together;\na section name that exists in several notebooks is rejected as ambiguous.\n\nWriting is always two steps. Call a write tool without dryRun: nothing is written, the reply starts with 'applyToken: <token>' and shows the exact\nchange OneNote would receive. To apply, repeat the same call with dryRun=false and that applyToken. A token is single use, expires after 10 minutes,\nbelongs to one server process, and is refused when the arguments differ or the target changed in OneNote after the dry run.\nIf an apply is interrupted its outcome is unknown: read the page again and preview before retrying.\n\nEditing text: OneNote replaces an entire outline with whatever one:OEChildren the caller sends, so a paragraph omitted from that list is DELETED.\nThat is why edit exists and why it resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing.\nUse edit for changes inside an outline and append_lines for a new outline at the end of a page. Raw outline XML is never accepted.\n\nFormatting: a line is a plain string, or an object with text, depth, list, quickStyle, alignment, spaceBefore,\nspaceAfter and style (fontFamily, fontSize, colour, bold, italic, underline, strikethrough, highlight). Depth\nnests a paragraph under the nearest earlier one at the previous level, which is how a bullet tree is written.\nA quickStyle name is resolved against the page's own QuickStyleDef list, so pass the index read_page reported\nwhen the page does not define that name. insert_image, insert_table and edit append take after: the objectID\nof a paragraph to insert after, at any depth.\n\nConcurrency: lastModifiedTime does not advance when content is written through COM and the hierarchy API can report a different value than the page\nitself, so it is informational only. Safety comes from the token's content fingerprint, and delete_page additionally requires the exact page name.",
+  "tools": [
+    {
+      "name": "notebooks",
+      "title": "OneNote notebooks",
+      "description": "List the Microsoft OneNote notebooks and sections available in the user's Windows OneNote desktop client.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "notebooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "sections": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "path"
+                    ],
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "path",
+                "sections"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "notebooks"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "pages",
+      "title": "OneNote pages",
+      "description": "List the pages in one OneNote section. Pass sectionId, or notebook plus section names. Returns names, ids and creation times; for a page's live modification time use read_page.",
+      "inputSchema": {
+        "properties": {
+          "sectionId": {
+            "type": "string",
+            "description": "Section ID from notebooks"
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name, required when sectionId is omitted"
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "sectionId": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "created": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "level",
+                "created"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "sectionId",
+          "section",
+          "pages"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "search",
+      "title": "Search OneNote",
+      "description": "Find OneNote pages by name across every notebook. Matching is a case-insensitive substring match on the page name; page bodies are not searched.",
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Substring to look for in page names"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum matches to return (default 25)"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "returned": {
+            "type": "number"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pageId": {
+                  "type": "string"
+                },
+                "page": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                },
+                "notebook": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pageId",
+                "page",
+                "section",
+                "notebook"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "total",
+          "returned",
+          "pages"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "read_page",
+      "title": "Read OneNote page",
+      "description": "Read one OneNote page: its paragraphs as text, each with the objectID needed to reference it in edit, plus its outlines, tables and images. The reported lastModified is informational and must not be used as a concurrency check.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "includeXml": {
+            "type": "boolean",
+            "description": "Also return the raw OneNote XML. Large, and it includes the author's account metadata."
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "create_page",
+      "title": "Create OneNote page",
+      "description": "Create a new page in a OneNote section with a title and optional body paragraphs, each its own paragraph in one outline. A line is a plain string, or an object that adds depth, a list, a quick style and character formatting to it. The dry run validates the section but cannot show the page, which does not exist yet. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "sectionId": {
+            "type": "string",
+            "description": "Section ID from notebooks"
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name, required when sectionId is omitted"
+          },
+          "title": {
+            "type": "string",
+            "description": "Page title"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "One paragraph"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "The paragraph's text"
+                    },
+                    "depth": {
+                      "type": "number",
+                      "description": "0 is the outline's top level; a paragraph at depth d nests under the nearest earlier paragraph at depth d-1"
+                    },
+                    "list": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "bullet"
+                        },
+                        {
+                          "type": "string",
+                          "const": "number"
+                        },
+                        {
+                          "type": "string",
+                          "const": "none"
+                        }
+                      ]
+                    },
+                    "quickStyle": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "description": "Style name the page defines, or an index from read_page. OneNote maps the index onto a style the page defines and may normalise it, so read_page is the source of truth"
+                        }
+                      ]
+                    },
+                    "alignment": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "left"
+                        },
+                        {
+                          "type": "string",
+                          "const": "center"
+                        },
+                        {
+                          "type": "string",
+                          "const": "right"
+                        }
+                      ]
+                    },
+                    "spaceBefore": {
+                      "type": "number",
+                      "description": "Space above the paragraph, in points"
+                    },
+                    "spaceAfter": {
+                      "type": "number",
+                      "description": "Space below the paragraph, in points"
+                    },
+                    "style": {
+                      "type": "object",
+                      "properties": {
+                        "fontFamily": {
+                          "type": "string",
+                          "description": "Font family, for example Calibri"
+                        },
+                        "fontSize": {
+                          "type": "number",
+                          "description": "Font size in points"
+                        },
+                        "color": {
+                          "type": "string",
+                          "description": "Text colour as #RRGGBB, or automatic"
+                        },
+                        "bold": {
+                          "type": "boolean",
+                          "description": "Bold text"
+                        },
+                        "italic": {
+                          "type": "boolean",
+                          "description": "Italic text"
+                        },
+                        "underline": {
+                          "type": "boolean",
+                          "description": "Underlined text"
+                        },
+                        "strikethrough": {
+                          "type": "boolean",
+                          "description": "Struck-through text"
+                        },
+                        "highlight": {
+                          "type": "string",
+                          "description": "Highlight colour as #RRGGBB"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "Body paragraphs, in order"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "append_lines",
+      "title": "Append to OneNote page",
+      "description": "Append paragraphs to a page as a new outline at the end. Existing content is not touched. A line is a plain string, or an object that adds depth, a list, a quick style and character formatting to it; depth nests a paragraph under the nearest earlier one at the previous level. Use this for adding to the end of a page; use edit to change text inside an existing outline. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "One paragraph"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "The paragraph's text"
+                    },
+                    "depth": {
+                      "type": "number",
+                      "description": "0 is the outline's top level; a paragraph at depth d nests under the nearest earlier paragraph at depth d-1"
+                    },
+                    "list": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "bullet"
+                        },
+                        {
+                          "type": "string",
+                          "const": "number"
+                        },
+                        {
+                          "type": "string",
+                          "const": "none"
+                        }
+                      ]
+                    },
+                    "quickStyle": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string",
+                          "description": "Style name the page defines, or an index from read_page. OneNote maps the index onto a style the page defines and may normalise it, so read_page is the source of truth"
+                        }
+                      ]
+                    },
+                    "alignment": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "left"
+                        },
+                        {
+                          "type": "string",
+                          "const": "center"
+                        },
+                        {
+                          "type": "string",
+                          "const": "right"
+                        }
+                      ]
+                    },
+                    "spaceBefore": {
+                      "type": "number",
+                      "description": "Space above the paragraph, in points"
+                    },
+                    "spaceAfter": {
+                      "type": "number",
+                      "description": "Space below the paragraph, in points"
+                    },
+                    "style": {
+                      "type": "object",
+                      "properties": {
+                        "fontFamily": {
+                          "type": "string",
+                          "description": "Font family, for example Calibri"
+                        },
+                        "fontSize": {
+                          "type": "number",
+                          "description": "Font size in points"
+                        },
+                        "color": {
+                          "type": "string",
+                          "description": "Text colour as #RRGGBB, or automatic"
+                        },
+                        "bold": {
+                          "type": "boolean",
+                          "description": "Bold text"
+                        },
+                        "italic": {
+                          "type": "boolean",
+                          "description": "Italic text"
+                        },
+                        "underline": {
+                          "type": "boolean",
+                          "description": "Underlined text"
+                        },
+                        "strikethrough": {
+                          "type": "boolean",
+                          "description": "Struck-through text"
+                        },
+                        "highlight": {
+                          "type": "string",
+                          "description": "Highlight colour as #RRGGBB"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "Paragraphs to append, in order"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "insert_table",
+      "title": "Insert OneNote table",
+      "description": "Insert a table into a page: give headers and rows as arrays of cell text. Without outline it becomes a new outline at the end of the page; with outline it is appended inside that existing outline; with after it goes right after that paragraph instead. Cells are single paragraphs and cannot contain nested tables. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "One header cell"
+            },
+            "description": "Optional header row"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "One cell"
+              }
+            },
+            "description": "Rows of cell text"
+          },
+          "bordersVisible": {
+            "type": "boolean",
+            "description": "Draw cell borders; OneNote's default is false"
+          },
+          "hasHeaderRow": {
+            "type": "boolean",
+            "description": "Render the first row as a header row"
+          },
+          "columnWidths": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Width of one column"
+            },
+            "description": "Optional per-column widths"
+          },
+          "outline": {
+            "type": "string",
+            "description": "objectID of an existing outline to append the table to"
+          },
+          "after": {
+            "type": "string",
+            "description": "objectID of a paragraph to insert after, at any depth; the outline is derived from it when outline is omitted"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "insert_image",
+      "title": "Insert OneNote image",
+      "description": "Insert an image file into a page, read from a path this server can reach (a WSL path, or /mnt/c/... for a file on the Windows side). Without outline it becomes a new outline at the end of the page; with outline it is appended inside that existing outline; with after it goes right after that paragraph instead. Without width and height OneNote picks the size. The image is embedded as given: crop it before calling if only part of it belongs on the page. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "path": {
+            "type": "string",
+            "description": "Image file path readable from this server"
+          },
+          "format": {
+            "type": "string",
+            "description": "png, jpg, emf or auto; derived from the extension when omitted"
+          },
+          "width": {
+            "type": "number",
+            "description": "Rendered width; needs height too"
+          },
+          "height": {
+            "type": "number",
+            "description": "Rendered height; needs width too"
+          },
+          "alt": {
+            "type": "string",
+            "description": "Alternative text stored on the image"
+          },
+          "outline": {
+            "type": "string",
+            "description": "objectID of an existing outline to append the image to"
+          },
+          "after": {
+            "type": "string",
+            "description": "objectID of a paragraph to insert after, at any depth; the outline is derived from it when outline is omitted"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "edit",
+      "title": "Edit OneNote page text",
+      "description": "Change paragraphs inside existing outlines of a page: replace their text with set, delete them with remove, or add paragraphs to an outline with append, optionally after a given paragraph. Paragraph objectIDs come from read_page, and outline objectIDs may be used as an append target. OneNote replaces an outline with exactly what the caller sends, so this tool resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing - that is why paragraph XML is never accepted from callers. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "set": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "objectID": {
+                  "type": "string",
+                  "description": "objectID of the paragraph to replace"
+                },
+                "text": {
+                  "type": "string",
+                  "description": "New text for that paragraph"
+                }
+              },
+              "required": [
+                "objectID",
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Paragraphs whose text is replaced"
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "objectID of a paragraph to delete"
+            },
+            "description": "Paragraphs to delete"
+          },
+          "append": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "objectID": {
+                  "type": "string",
+                  "description": "objectID of the outline (or of any paragraph in it) to add to"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "One paragraph"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string",
+                            "description": "The paragraph's text"
+                          },
+                          "depth": {
+                            "type": "number",
+                            "description": "0 is the outline's top level; a paragraph at depth d nests under the nearest earlier paragraph at depth d-1"
+                          },
+                          "list": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": "bullet"
+                              },
+                              {
+                                "type": "string",
+                                "const": "number"
+                              },
+                              {
+                                "type": "string",
+                                "const": "none"
+                              }
+                            ]
+                          },
+                          "quickStyle": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string",
+                                "description": "Style name the page defines, or an index from read_page. OneNote maps the index onto a style the page defines and may normalise it, so read_page is the source of truth"
+                              }
+                            ]
+                          },
+                          "alignment": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": "left"
+                              },
+                              {
+                                "type": "string",
+                                "const": "center"
+                              },
+                              {
+                                "type": "string",
+                                "const": "right"
+                              }
+                            ]
+                          },
+                          "spaceBefore": {
+                            "type": "number",
+                            "description": "Space above the paragraph, in points"
+                          },
+                          "spaceAfter": {
+                            "type": "number",
+                            "description": "Space below the paragraph, in points"
+                          },
+                          "style": {
+                            "type": "object",
+                            "properties": {
+                              "fontFamily": {
+                                "type": "string",
+                                "description": "Font family, for example Calibri"
+                              },
+                              "fontSize": {
+                                "type": "number",
+                                "description": "Font size in points"
+                              },
+                              "color": {
+                                "type": "string",
+                                "description": "Text colour as #RRGGBB, or automatic"
+                              },
+                              "bold": {
+                                "type": "boolean",
+                                "description": "Bold text"
+                              },
+                              "italic": {
+                                "type": "boolean",
+                                "description": "Italic text"
+                              },
+                              "underline": {
+                                "type": "boolean",
+                                "description": "Underlined text"
+                              },
+                              "strikethrough": {
+                                "type": "boolean",
+                                "description": "Struck-through text"
+                              },
+                              "highlight": {
+                                "type": "string",
+                                "description": "Highlight colour as #RRGGBB"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "description": "Paragraphs to add inside that outline"
+                },
+                "after": {
+                  "type": "string",
+                  "description": "objectID of a paragraph in that outline to insert after"
+                }
+              },
+              "required": [
+                "objectID",
+                "lines"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Paragraphs to add inside an existing outline"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_page",
+      "title": "Delete OneNote page",
+      "description": "Delete a OneNote page. It goes to the notebook's recycle bin, so it can be restored from OneNote. expectName is required and must match the page the target resolves to, so a stale or wrong id cannot delete a different page. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page ID from pages or search. Preferred."
+          },
+          "notebook": {
+            "type": "string",
+            "description": "Notebook name, used with section and page when pageId is unknown"
+          },
+          "section": {
+            "type": "string",
+            "description": "Section name"
+          },
+          "page": {
+            "type": "string",
+            "description": "Page name"
+          },
+          "expectName": {
+            "type": "string",
+            "description": "Exact page name the target must have; required safety check"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "expectName"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
+          },
+          "changes": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

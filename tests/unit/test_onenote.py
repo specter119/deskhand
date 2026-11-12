@@ -218,3 +218,77 @@ async def test_an_unknown_tool_is_a_protocol_error_and_a_missing_argument_object
         result = await t.client.call_tool("append_lines", None)
         assert result.is_error is True
         assert text_of(result).startswith("Input validation error")
+
+
+async def test_a_paragraph_object_carries_depth_list_and_style_to_the_bridge():
+    bridge = FakeBridge({"append": preview_handler()})
+    async with connect(bridge) as t:
+        args = {
+            "pageId": "p1",
+            "lines": [
+                {"text": "heading", "quickStyle": 2, "style": {"fontFamily": "Calibri", "fontSize": 19}},
+                {"text": "child", "depth": 1, "list": "bullet", "style": {"bold": True}},
+                {"text": "grandchild", "depth": 2, "list": "number"},
+            ],
+        }
+        preview = await t.call("append_lines", args)
+        assert not preview.is_error, text_of(preview)
+        sent = bridge.calls[0]["args"]["lines"]
+        # depth is always explicit on the wire; everything else is passed through as given.
+        assert sent == [{**args["lines"][0], "depth": 0}, *args["lines"][1:]], sent
+        assert "1. heading   [style=2, 19pt Calibri]" in text_of(preview), text_of(preview)
+        assert "2.   child   [depth=1, bullet, bold]" in text_of(preview), text_of(preview)
+
+
+async def test_a_plain_string_stays_a_plain_string_so_an_unformatted_call_is_unchanged():
+    bridge = FakeBridge({"append": preview_handler()})
+    async with connect(bridge) as t:
+        preview = await t.call("append_lines", {"pageId": "p1", "lines": ["a", "b"]})
+        assert bridge.calls[0]["args"]["lines"] == ["a", "b"]
+        assert text_of(preview).count("\n  1. a") == 1, text_of(preview)
+
+
+@pytest.mark.parametrize(
+    ("lines", "message"),
+    [
+        ([{"text": "a", "depth": 1}], "the first paragraph must be at depth 0"),
+        ([{"text": "a"}, {"text": "b", "depth": 2}], "depth 2 skips a level"),
+        ([{"text": "a", "depth": -1}], "depth must be a whole number"),
+        ([{"text": "a", "depth": 1.5}], "depth must be a whole number"),
+        ([{"text": "a", "style": {"fontSize": 0}}], "style.fontSize must be a number above 0"),
+        ([{"text": "a", "style": {"color": "blue"}}], "style.color must be #RRGGBB"),
+        ([{"text": "a", "spaceBefore": -1}], "spaceBefore must be a number"),
+        ([{"text": "a", "quickStyle": True}], "is not valid under any of the given schemas"),
+    ],
+)
+async def test_paragraph_objects_are_checked_before_anything_reaches_windows(lines, message):
+    bridge = FakeBridge({"append": preview_handler()})
+    async with connect(bridge) as t:
+        result = await t.call("append_lines", {"pageId": "p1", "lines": lines})
+        assert result.is_error is True
+        assert message in text_of(result), text_of(result)
+        assert bridge.calls == []
+
+
+async def test_after_anchors_an_image_table_or_appended_paragraph_to_a_paragraph(tmp_path):
+    path = tmp_path / "a.png"
+    path.write_bytes(b"png bytes")
+    bridge = FakeBridge(
+        {"insert_image": preview_handler(), "insert_table": preview_handler(), "edit": preview_handler()}
+    )
+    async with connect(bridge) as t:
+        image = await t.call("insert_image", {"pageId": "p1", "path": str(path), "after": "oe-3"})
+        assert not image.is_error, text_of(image)
+        assert bridge.calls[0]["args"]["after"] == "oe-3"
+        assert "after paragraph oe-3" in text_of(image), text_of(image)
+
+        table = await t.call("insert_table", {"pageId": "p1", "rows": [["a"]], "after": "oe-3"})
+        assert not table.is_error, text_of(table)
+        assert bridge.calls[1]["args"]["after"] == "oe-3"
+
+        edit = await t.call(
+            "edit", {"pageId": "p1", "append": [{"objectID": "ol-1", "lines": ["x"], "after": "oe-3"}]}
+        )
+        assert not edit.is_error, text_of(edit)
+        assert bridge.calls[2]["args"]["append"][0]["after"] == "oe-3"
+        assert "add 1 paragraph(s) to ol-1 after oe-3" in text_of(edit), text_of(edit)

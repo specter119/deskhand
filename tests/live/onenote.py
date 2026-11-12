@@ -306,6 +306,62 @@ async def main() -> int:
 
             await check("append_lines adds a paragraph and leaves the old ones", append)
 
+            async def formatting() -> None:
+                _, applied, _ = await a.write(
+                    "append_lines",
+                    {
+                        "pageId": state["page_id"],
+                        "lines": [
+                            {
+                                "text": "formatted heading",
+                                "list": "bullet",
+                                "quickStyle": "p",
+                                "spaceBefore": 5,
+                                "style": {
+                                    "fontFamily": "Calibri",
+                                    "fontSize": 19,
+                                    "color": "#2E75B5",
+                                    "bold": True,
+                                },
+                            },
+                            {"text": "nested child", "depth": 1, "list": "bullet"},
+                            {"text": "nested grandchild", "depth": 2, "list": "number"},
+                        ],
+                    },
+                )
+                assert not applied.is_error, applied.text
+                page = await read_page(a, state["page_id"])
+                by_text = {line["text"]: line for line in page["lines"]}
+                heading = by_text["formatted heading"]
+                child = by_text["nested child"]
+                grandchild = by_text["nested grandchild"]
+                assert heading["list"] == "bullet" and heading["depth"] == 0, heading
+                assert child["depth"] == 1 and child["list"] == "bullet", child
+                assert grandchild["depth"] == 2 and grandchild["list"] == "number", grandchild
+                # A name resolves through the page's own QuickStyleDef list. OneNote then maps the index onto
+                # the style that best matches the paragraph, so only "a defined index" is stable to assert.
+                assert heading["quickStyle"] in {"0", "1"}, heading
+                assert "19" in heading.get("style", ""), heading
+
+            await check("append_lines writes depth, list, quick style and font size", formatting)
+
+            async def insert_after() -> None:
+                anchor = await line_by_text("second line")
+                assert anchor, "anchor paragraph missing"
+                with tempfile.TemporaryDirectory(prefix="deskhand-live-") as directory:
+                    file = Path(directory) / "probe.png"
+                    file.write_bytes(png())
+                    _, applied, _ = await a.write(
+                        "insert_image",
+                        {"pageId": state["page_id"], "path": str(file), "after": anchor["objectID"]},
+                    )
+                assert not applied.is_error, applied.text
+                page = await read_page(a, state["page_id"])
+                index = next(i for i, line in enumerate(page["lines"]) if line["text"] == "second line")
+                assert page["lines"][index + 1]["hasImage"], [line["text"] for line in page["lines"]]
+
+            await check("insert_image with after lands right after that paragraph", insert_after)
+
             async def second_dry_run() -> None:
                 target = await line_by_text("keep line")
                 assert target
@@ -416,7 +472,8 @@ async def main() -> int:
                         "insert_image", {"pageId": state["page_id"], "path": str(file), "alt": "probe"}
                     )
                 assert not applied.is_error, applied.text
-                assert len((await read_page(a, state["page_id"]))["images"]) == 1
+                # The after-anchor check above already put one image on this page.
+                assert len((await read_page(a, state["page_id"]))["images"]) >= 1
 
             await check("insert_image adds an image bound to the file contents", image)
 

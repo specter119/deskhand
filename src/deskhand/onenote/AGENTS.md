@@ -234,6 +234,28 @@ XML (`OuterXml`) for every paragraph it is not changing — so styles, lists, ta
 survive — and substitutes only the `<one:T>` of the paragraphs being edited. Paragraph XML must
 never be hand-built by a caller.
 
+### Paragraph formatting and the `after` anchor
+
+New content is described by the caller as a flat list with a `depth` per paragraph; the bridge expands
+it into nested `one:OEChildren` (`New-ParagraphsXml`). Only `edit` echoes OneNote's XML — content that
+is *added* is always built from the caller's description, so no raw XML is accepted.
+
+- Formatting goes where OneNote itself puts it: `font-family`, `font-size` and `color` on the
+  `one:OE` style attribute (the cascaded text attributes), and `bold`, `italic`, `underline`,
+  `line-through` and `background` in a `<span style='...'>` inside the CDATA. OneNote normalises a
+  `one:T` style up to the `OE`, and `read_page` reports whichever carries it.
+- `quickStyleIndex` indexes the **page's own `one:QuickStyleDef` list**, not a global enum: a fresh
+  page defines 0 `PageTitle` and 1 `p` and nothing else. A name is resolved against that list and an
+  unknown name is refused with the names the page does define. OneNote then remaps the index onto the
+  style that best matches the paragraph's formatting, so the index is a hint and explicit `style` is
+  what actually makes a heading look like a heading.
+- `one:Number` needs `numberFormat` as a **pattern** (`##.`) and `text` as the rendered number
+  (`1.`); a name such as `decimal` is refused with 0x80042001.
+- `after` names a paragraph, at any depth. Because only the outline's top-level children are rebuilt,
+  the block is spliced into the top-level child that contains the anchor: the anchor's own `OuterXml`
+  is a unique substring there, so the splice is exact. An anchor that the same call also changes or
+  removes is refused rather than guessed at.
+
 ### Rich text
 
 `one:T` holds an **HTML-ish fragment inside CDATA**, with entities still escaped even inside CDATA.

@@ -16,7 +16,9 @@ application, a small shared core. Only `onenote` exists today.
 - `tests/unit/`: run with `uv run pytest`; fake bridge, in-memory MCP client, fake resident `powershell.exe`, no Windows.
 - `tests/parity/`: the scenario and the transcripts recorded from the TypeScript implementation (branch `ts`).
   `test_parity.py` replays them; a wording change in a tool reply fails it on purpose. Regenerate the
-  fixtures only when the contract is meant to change.
+  fixtures only when the contract is meant to change. `fixtures/tools.json` is the advertised tool
+  list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
+  formatting and the `after` anchor were added on purpose.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
 - Branch `ts` holds the frozen TypeScript implementation, with its own tests.
 

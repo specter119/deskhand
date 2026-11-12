@@ -1,8 +1,12 @@
 """The Python server must show clients exactly what the TypeScript server showed.
 
-tests/parity/fixtures was recorded from the TypeScript implementation (branch `ts`) by replaying
-tests/parity/scenario.json against a scripted bridge. This test replays the same scenario here.
-Error texts are compared only by `isError`: their wording came from the TypeScript SDK.
+tests/parity/fixtures/ts-transcripts.json was recorded from the TypeScript implementation (branch
+`ts`) by replaying tests/parity/scenario.json against a scripted bridge. This test replays the same
+scenario here. Error texts are compared only by `isError`: their wording came from the TypeScript SDK.
+
+fixtures/tools.json is the advertised tool list. It matched the TypeScript record until paragraph
+formatting and the `after` anchor were added on purpose; regenerate it with
+`uv run python tests/parity/dump_tools.py` whenever the contract is meant to change.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from deskhand.onenote.server import INSTRUCTIONS
 
 PARITY = Path(__file__).parent.parent / "parity"
 SCENARIO = json.loads((PARITY / "scenario.json").read_text("utf-8"))
-EXPECTED_TOOLS = json.loads((PARITY / "fixtures" / "ts-tools.json").read_text("utf-8"))
+EXPECTED_TOOLS = json.loads((PARITY / "fixtures" / "tools.json").read_text("utf-8"))
 EXPECTED_TRANSCRIPTS = json.loads((PARITY / "fixtures" / "ts-transcripts.json").read_text("utf-8"))
 
 pytestmark = pytest.mark.anyio

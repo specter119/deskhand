@@ -45,6 +45,7 @@ _PAGE_LINE = _loose(
         "outlineID": string(),
         "quickStyle": string(),
         "alignment": string(),
+        "style": optional(string("OneNote's cascaded text style for the paragraph, when it has one")),
     }
 )
 _PAGE_OUTLINE = _loose(
@@ -101,6 +102,51 @@ WRITE_RESULT = _loose(
         "changes": optional(array(anything())),
     }
 )
+
+# A paragraph is either a plain string or this object. Depth is the only way to express nesting, and
+# a caller that does not need formatting keeps writing plain strings.
+PARAGRAPH_STYLE = obj(
+    {
+        "fontFamily": optional(string("Font family, for example Calibri")),
+        "fontSize": optional(number("Font size in points")),
+        "color": optional(string("Text colour as #RRGGBB, or automatic")),
+        "bold": optional(boolean("Bold text")),
+        "italic": optional(boolean("Italic text")),
+        "underline": optional(boolean("Underlined text")),
+        "strikethrough": optional(boolean("Struck-through text")),
+        "highlight": optional(string("Highlight colour as #RRGGBB")),
+    },
+    additional=False,
+)
+
+PARAGRAPH = obj(
+    {
+        "text": string("The paragraph's text"),
+        "depth": optional(
+            number(
+                "0 is the outline's top level; a paragraph at depth d nests under the nearest earlier "
+                "paragraph at depth d-1"
+            )
+        ),
+        "list": optional(union(literal("bullet"), literal("number"), literal("none"))),
+        "quickStyle": optional(
+            union(
+                number(),
+                string(
+                    "Style name the page defines, or an index from read_page. OneNote maps the index onto a "
+                    "style the page defines and may normalise it, so read_page is the source of truth"
+                ),
+            )
+        ),
+        "alignment": optional(union(literal("left"), literal("center"), literal("right"))),
+        "spaceBefore": optional(number("Space above the paragraph, in points")),
+        "spaceAfter": optional(number("Space below the paragraph, in points")),
+        "style": optional(PARAGRAPH_STYLE),
+    },
+    additional=False,
+)
+
+LINE = union(string("One paragraph"), PARAGRAPH)
 
 TARGET_PARAMS: dict[str, Any] = {
     "pageId": optional(string("Page ID from pages or search. Preferred.")),

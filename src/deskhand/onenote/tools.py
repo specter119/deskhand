@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,7 @@ from deskhand.onenote.format import (
     normalize_page,
 )
 from deskhand.onenote.schemas import (
+    LINE,
     NOTEBOOK,
     PAGE,
     PAGE_META,
@@ -95,6 +97,19 @@ def _target_label(target: Params) -> str:
         f"{as_string(target.get('notebook')) or '?'} / {as_string(target.get('section')) or '?'}"
         f" / {as_string(target.get('page')) or '?'}"
     )
+
+
+def _placement(outline: Any, after: Any) -> str:
+    """Where a block lands: a new outline, inside an existing one, or after one paragraph of it."""
+    if js_truthy(after):
+        return (
+            f"inside outline {outline} after paragraph {after}"
+            if js_truthy(outline)
+            else f"after paragraph {after}"
+        )
+    if js_truthy(outline):
+        return f"inside outline {outline}"
+    return "as a new outline at the end of the page"
 
 
 def _image_format_for(path: str, requested: str | None) -> str:
@@ -173,6 +188,77 @@ def _strings(value: Any) -> list[str]:
     return [item for item in as_array(value) if isinstance(item, str)]
 
 
+_PARAGRAPH_KEYS = (
+    "text",
+    "depth",
+    "list",
+    "quickStyle",
+    "alignment",
+    "spaceBefore",
+    "spaceAfter",
+    "style",
+)
+_COLOR = re.compile(r"^(#[0-9A-Fa-f]{6}|automatic)$")
+
+
+def _paragraphs(value: Any, where: str = "lines") -> list[Any]:
+    """Normalises lines, which are plain strings or paragraph objects, and checks what the schema cannot.
+
+    Depth describes a tree as a flat list: a paragraph at depth d hangs under the nearest earlier one at
+    depth d-1, so a level can only be entered from the level above it.
+    """
+    out: list[Any] = []
+    depth = 0
+    for index, item in enumerate(as_array(value)):
+        if isinstance(item, str):
+            # A plain string stays a plain string on the wire, so an unformatted call is unchanged.
+            depth = 0
+            out.append(item)
+            continue
+        if not isinstance(item, dict):
+            raise ValueError(f"{where}[{index}] must be a string or a paragraph object")
+        paragraph: dict[str, Any] = {key: item[key] for key in _PARAGRAPH_KEYS if item.get(key) is not None}
+        text = paragraph.get("text")
+        if not isinstance(text, str):
+            raise ValueError(f"{where}[{index}] needs text")
+        level = paragraph.get("depth", 0)
+        if isinstance(level, bool) or not isinstance(level, (int, float)) or level != int(level):
+            raise ValueError(f"{where}[{index}] depth must be a whole number of 0 or more")
+        level = int(level)
+        if level < 0:
+            raise ValueError(f"{where}[{index}] depth must be a whole number of 0 or more")
+        if not out and level != 0:
+            raise ValueError(f"{where}[{index}] the first paragraph must be at depth 0")
+        if level > depth + 1:
+            raise ValueError(
+                f"{where}[{index}] depth {level} skips a level: the previous paragraph is at depth {depth}"
+            )
+        paragraph["depth"] = level
+        depth = level
+        _check_paragraph(paragraph, where, index)
+        out.append(paragraph)
+    return out
+
+
+def _check_paragraph(paragraph: dict[str, Any], where: str, index: int) -> None:
+    for key in ("spaceBefore", "spaceAfter"):
+        value = paragraph.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise ValueError(f"{where}[{index}] {key} must be a number of 0 or more")
+    style = paragraph.get("style")
+    if not isinstance(style, dict):
+        return
+    size = style.get("fontSize")
+    if size is not None and (isinstance(size, bool) or not isinstance(size, (int, float)) or size <= 0):
+        raise ValueError(f"{where}[{index}] style.fontSize must be a number above 0")
+    for key in ("color", "highlight"):
+        value = style.get(key)
+        if value is not None and (not isinstance(value, str) or not _COLOR.match(value)):
+            raise ValueError(f"{where}[{index}] style.{key} must be #RRGGBB or automatic")
+
+
 def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
     async def notebooks(args: Params) -> ToolOutput:
         data = await _call(deps, "notebooks", {})
@@ -226,7 +312,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         return ToolOutput(text, {"page": page})
 
     async def create_page(args: Params) -> ToolOutput:
-        lines = _strings(args.get("lines"))
+        lines = _paragraphs(args.get("lines"))
         where = (
             f"section {args['sectionId']}"
             if js_truthy(args.get("sectionId"))
@@ -262,7 +348,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         return await _run_write(deps, plan, args)
 
     async def append_lines(args: Params) -> ToolOutput:
-        lines = _strings(args.get("lines"))
+        lines = _paragraphs(args.get("lines"))
         if not lines:
             raise ValueError("append_lines needs at least one line")
         target = _pick_target(args)
@@ -297,13 +383,13 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         column_count = max([len(headers), *(len(row) for row in rows)])
         row_count = (1 if headers else 0) + len(rows)
         outline = args.get("outline")
+        after = args.get("after")
+        placement = _placement(outline, after)
         intent = "\n".join(
             part
             for part in [
                 f"Insert a {row_count}x{column_count} table into {_target_label(target)}",
-                f"inside outline {outline}"
-                if js_truthy(outline)
-                else "as a new outline at the end of the page",
+                placement,
                 f"header: {' | '.join(headers)}" if headers else "",
                 *(f"row: {' | '.join(row)}" for row in rows),
             ]
@@ -329,6 +415,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 "hasHeaderRow": args.get("hasHeaderRow") is True,
                 "columnWidths": args.get("columnWidths"),
                 "outline": outline,
+                "after": after,
             },
             intent,
             describe,
@@ -348,13 +435,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         image_format = _image_format_for(path, args.get("format"))
         target = _pick_target(args)
         outline = args.get("outline")
+        after = args.get("after")
         sized = js_truthy(args.get("width")) and js_truthy(args.get("height"))
         intent = "\n".join(
             [
                 f"Insert {path} ({js_round(size / 1024)} KB, format {image_format}) into {_target_label(target)}",
-                f"inside outline {outline}"
-                if js_truthy(outline)
-                else "as a new outline at the end of the page",
+                _placement(outline, after),
                 f"rendered at {num(args['width'])}x{num(args['height'])}"
                 if sized
                 else "at OneNote's chosen size",
@@ -383,6 +469,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 "height": args.get("height"),
                 "alt": args.get("alt"),
                 "outline": outline,
+                "after": after,
             },
             intent,
             describe,
@@ -393,7 +480,11 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         set_ = [{"objectID": item["objectID"], "text": item["text"]} for item in as_array(args.get("set"))]
         remove = _strings(args.get("remove"))
         append = [
-            {"objectID": item["objectID"], "lines": as_array(item.get("lines"))}
+            {
+                "objectID": item["objectID"],
+                "lines": _paragraphs(item.get("lines"), "append.lines"),
+                "after": item.get("after"),
+            }
             for item in as_array(args.get("append"))
         ]
         if not set_ and not remove and not append:
@@ -407,7 +498,11 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                     for i in set_
                 ),
                 *(f"  delete {object_id}" for object_id in remove),
-                *(f"  add {len(i['lines'])} paragraph(s) to {i['objectID']}" for i in append),
+                *(
+                    f"  add {len(i['lines'])} paragraph(s) to {i['objectID']}"
+                    + (f" after {i['after']}" if js_truthy(i.get("after")) else "")
+                    for i in append
+                ),
             ]
         )
 
@@ -532,12 +627,13 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "create_page",
             "Create OneNote page",
             "Create a new page in a OneNote section with a title and optional body paragraphs, each its own "
-            "paragraph in one outline. The dry run validates the section but cannot show the page, which does "
-            f"not exist yet. {WRITE_FLOW}",
+            "paragraph in one outline. A line is a plain string, or an object that adds depth, a list, a "
+            "quick style and character formatting to it. The dry run validates the section but cannot show "
+            f"the page, which does not exist yet. {WRITE_FLOW}",
             {
                 **section_params,
                 "title": s.string("Page title"),
-                "lines": s.optional(s.array(s.string("One paragraph"), "Body paragraphs, in order")),
+                "lines": s.optional(s.array(LINE, "Body paragraphs, in order")),
                 **WRITE_PARAMS,
             },
             WRITE_RESULT,
@@ -547,11 +643,13 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         spec(
             "append_lines",
             "Append to OneNote page",
-            "Append paragraphs to a page as a new outline at the end. Existing content is not touched. Use this "
-            f"for adding to the end of a page; use edit to change text inside an existing outline. {WRITE_FLOW}",
+            "Append paragraphs to a page as a new outline at the end. Existing content is not touched. A line "
+            "is a plain string, or an object that adds depth, a list, a quick style and character formatting "
+            "to it; depth nests a paragraph under the nearest earlier one at the previous level. Use this for "
+            f"adding to the end of a page; use edit to change text inside an existing outline. {WRITE_FLOW}",
             {
                 **TARGET_PARAMS,
-                "lines": s.array(s.string("One paragraph"), "Paragraphs to append, in order"),
+                "lines": s.array(LINE, "Paragraphs to append, in order"),
                 **WRITE_PARAMS,
             },
             WRITE_RESULT,
@@ -563,7 +661,8 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "Insert OneNote table",
             "Insert a table into a page: give headers and rows as arrays of cell text. Without outline it "
             "becomes a new outline at the end of the page; with outline it is appended inside that existing "
-            f"outline. Cells are single paragraphs and cannot contain nested tables. {WRITE_FLOW}",
+            "outline; with after it goes right after that paragraph instead. Cells are single paragraphs and "
+            f"cannot contain nested tables. {WRITE_FLOW}",
             {
                 **TARGET_PARAMS,
                 "headers": s.optional(s.array(s.string("One header cell"), "Optional header row")),
@@ -574,6 +673,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                     s.array(s.number("Width of one column"), "Optional per-column widths")
                 ),
                 "outline": s.optional(s.string("objectID of an existing outline to append the table to")),
+                "after": s.optional(
+                    s.string(
+                        "objectID of a paragraph to insert after, at any depth; the outline is derived from "
+                        "it when outline is omitted"
+                    )
+                ),
                 **WRITE_PARAMS,
             },
             WRITE_RESULT,
@@ -585,8 +690,9 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "Insert OneNote image",
             "Insert an image file into a page, read from a path this server can reach (a WSL path, or "
             "/mnt/c/... for a file on the Windows side). Without outline it becomes a new outline at the end "
-            "of the page; with outline it is appended inside that existing outline. Without width and height "
-            f"OneNote picks the size. {WRITE_FLOW}",
+            "of the page; with outline it is appended inside that existing outline; with after it goes right "
+            "after that paragraph instead. Without width and height OneNote picks the size. The image is "
+            f"embedded as given: crop it before calling if only part of it belongs on the page. {WRITE_FLOW}",
             {
                 **TARGET_PARAMS,
                 "path": s.string("Image file path readable from this server"),
@@ -597,6 +703,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 "height": s.optional(s.number("Rendered height; needs width too")),
                 "alt": s.optional(s.string("Alternative text stored on the image")),
                 "outline": s.optional(s.string("objectID of an existing outline to append the image to")),
+                "after": s.optional(
+                    s.string(
+                        "objectID of a paragraph to insert after, at any depth; the outline is derived from "
+                        "it when outline is omitted"
+                    )
+                ),
                 **WRITE_PARAMS,
             },
             WRITE_RESULT,
@@ -607,8 +719,9 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "edit",
             "Edit OneNote page text",
             "Change paragraphs inside existing outlines of a page: replace their text with set, delete them "
-            "with remove, or add paragraphs to an outline with append. Paragraph objectIDs come from "
-            "read_page, and outline objectIDs may be used as an append target. OneNote replaces an outline "
+            "with remove, or add paragraphs to an outline with append, optionally after a given paragraph. "
+            "Paragraph objectIDs come from read_page, and outline objectIDs may be used as an append target. "
+            "OneNote replaces an outline "
             "with exactly what the caller sends, so this tool resends each affected outline in full, echoing "
             "back OneNote's own XML for everything it is not changing - that is why paragraph XML is never "
             f"accepted from callers. {WRITE_FLOW}",
@@ -636,8 +749,9 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                                 "objectID": s.string(
                                     "objectID of the outline (or of any paragraph in it) to add to"
                                 ),
-                                "lines": s.array(
-                                    s.string("One paragraph"), "Paragraphs to add at the end of that outline"
+                                "lines": s.array(LINE, "Paragraphs to add inside that outline"),
+                                "after": s.optional(
+                                    s.string("objectID of a paragraph in that outline to insert after")
                                 ),
                             },
                             additional=False,

@@ -29,6 +29,13 @@ INSTRUCTIONS = "\n".join(
         "That is why edit exists and why it resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing.",
         "Use edit for changes inside an outline and append_lines for a new outline at the end of a page. Raw outline XML is never accepted.",
         "",
+        "Formatting: a line is a plain string, or an object with text, depth, list, quickStyle, alignment, spaceBefore,",
+        "spaceAfter and style (fontFamily, fontSize, colour, bold, italic, underline, strikethrough, highlight). Depth",
+        "nests a paragraph under the nearest earlier one at the previous level, which is how a bullet tree is written.",
+        "A quickStyle name is resolved against the page's own QuickStyleDef list, so pass the index read_page reported",
+        "when the page does not define that name. insert_image, insert_table and edit append take after: the objectID",
+        "of a paragraph to insert after, at any depth.",
+        "",
         "Concurrency: lastModifiedTime does not advance when content is written through COM and the hierarchy API can report a different value than the page",
         "itself, so it is informational only. Safety comes from the token's content fingerprint, and delete_page additionally requires the exact page name.",
     ]

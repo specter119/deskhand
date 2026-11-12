@@ -86,12 +86,16 @@ function Get-CleanText([string]$s) {
 # Plain text is stored as an HTML-ish fragment inside the CDATA, so a literal "<angles>" that is put
 # in raw is read back as a tag and silently disappears. Escape & < > the way OneNote does itself
 # ("->" is stored as "-&gt;"), and the text survives round-tripping verbatim.
-function New-TextCdata([string]$s) {
+function Get-EscapedText([string]$s) {
 	$t = Get-CleanText $s
 	$t = $t.Replace('&', '&amp;')
 	$t = $t.Replace('<', '&lt;')
 	$t = $t.Replace('>', '&gt;')
-	$t = $t.Replace(']]>', ']]]]><![CDATA[>')
+	return $t
+}
+
+function New-TextCdata([string]$s) {
+	$t = (Get-EscapedText $s).Replace(']]>', ']]]]><![CDATA[>')
 	return '<![CDATA[' + $t + ']]>'
 }
 
@@ -207,21 +211,32 @@ function Get-PageModel($pageNode) {
 
 		$outline = Get-NearestAncestor $oe 'Outline'
 
-		[void]$lines.Add(@{
-				index      = $index
-				objectID   = $oe.GetAttribute('objectID')
-				text       = (Get-OeText $oe)
-				inTitle    = ($ancestors -contains 'Title')
-				inTable    = ($ancestors -contains 'Table')
-				hasImage   = ($null -ne $oe.SelectSingleNode('*[local-name()="Image"]'))
-				hasTable   = ($null -ne $oe.SelectSingleNode('*[local-name()="Table"]'))
-				hasInk     = ($null -ne $oe.SelectSingleNode('.//*[local-name()="InkDrawing"]'))
-				list       = $list
-				depth      = $depth
-				outlineID  = $(if ($null -ne $outline) { $outline.GetAttribute('objectID') } else { '' })
-				quickStyle = $oe.GetAttribute('quickStyleIndex')
-				alignment  = $oe.GetAttribute('alignment')
-			})
+		# Font family, size and colour are cascaded text attributes: OneNote puts them on the OE, a caller
+		# may have put them on the T. Either way they are what read_page reports back.
+		$style = $oe.GetAttribute('style')
+		if ([string]::IsNullOrEmpty($style)) {
+			$tNode = $oe.SelectSingleNode('*[local-name()="T"]')
+			if ($null -ne $tNode) { $style = $tNode.GetAttribute('style') }
+		}
+
+		$line = @{
+			index      = $index
+			objectID   = $oe.GetAttribute('objectID')
+			text       = (Get-OeText $oe)
+			inTitle    = ($ancestors -contains 'Title')
+			inTable    = ($ancestors -contains 'Table')
+			hasImage   = ($null -ne $oe.SelectSingleNode('*[local-name()="Image"]'))
+			hasTable   = ($null -ne $oe.SelectSingleNode('*[local-name()="Table"]'))
+			hasInk     = ($null -ne $oe.SelectSingleNode('.//*[local-name()="InkDrawing"]'))
+			list       = $list
+			depth      = $depth
+			outlineID  = $(if ($null -ne $outline) { $outline.GetAttribute('objectID') } else { '' })
+			quickStyle = $oe.GetAttribute('quickStyleIndex')
+			alignment  = $oe.GetAttribute('alignment')
+		}
+		# Only when the paragraph carries one, so a page without formatting reads back exactly as before.
+		if (-not [string]::IsNullOrEmpty($style)) { $line['style'] = $style }
+		[void]$lines.Add($line)
 		$index++
 	}
 
@@ -486,7 +501,154 @@ function New-BlockOutlineXml([string[]]$blocks) {
 	return $sb.ToString()
 }
 
-function New-OutlineXml([string[]]$lines, $position) {
+# --- paragraphs -------------------------------------------------------------
+# A caller describes a paragraph tree as a flat list that carries a depth per entry: depth d hangs
+# under the nearest earlier paragraph at depth d-1. OneNote expresses the same tree by nesting
+# one:OEChildren, so the flat list is expanded into that shape here. Formatting goes where OneNote
+# itself puts it: font family, size and colour on the one:OE style attribute (the cascaded text
+# attributes), and the character formatting that only a run can carry (bold, italic, underline,
+# strike, highlight) in a span inside the CDATA.
+
+$QUICK_STYLE_ALIASES = @{ 'normal' = 'p'; 'paragraph' = 'p'; 'title' = 'pagetitle' }
+
+# Reads lines, which are either plain strings or { text, depth, list, quickStyle, alignment,
+# spaceBefore, spaceAfter, style } objects, into the flat form the tree builder expects.
+function Get-Paragraphs($req) {
+	$out = New-Object System.Collections.ArrayList
+	$previous = -1
+	foreach ($l in @(Get-Field $req 'lines')) {
+		if ($null -eq $l) { continue }
+		$p = @{ text = ''; depth = 0; list = ''; quickStyle = $null; alignment = ''; spaceBefore = $null; spaceAfter = $null; style = $null }
+		if ($l -is [string]) { $p.text = $l }
+		else {
+			$p.text = [string](Get-Field $l 'text')
+			$depth = Get-Field $l 'depth'
+			if ($null -ne $depth) { $p.depth = [int]$depth }
+			$p.list = [string](Get-Field $l 'list')
+			$p.quickStyle = Get-Field $l 'quickStyle'
+			$p.alignment = [string](Get-Field $l 'alignment')
+			$p.spaceBefore = Get-Field $l 'spaceBefore'
+			$p.spaceAfter = Get-Field $l 'spaceAfter'
+			$p.style = Get-Field $l 'style'
+		}
+		if ($p.depth -lt 0) { Fail 'paragraph depth cannot be negative' 'invalid_request' }
+		if ($out.Count -eq 0 -and $p.depth -ne 0) { Fail 'the first paragraph must be at depth 0' 'invalid_request' }
+		if ($p.depth -gt $previous + 1) { Fail ('paragraph depth ' + $p.depth + ' skips a level after depth ' + $previous) 'invalid_request' }
+		$previous = $p.depth
+		[void]$out.Add($p)
+	}
+	return @($out)
+}
+
+function Test-QuickStyleNames($paragraphs) {
+	foreach ($p in $paragraphs) {
+		if ($null -eq $p.quickStyle) { continue }
+		if ($p.quickStyle -is [string] -and $p.quickStyle -notmatch '^\d+$') { return $true }
+	}
+	return $false
+}
+
+# A quickStyleIndex is an index into the page's own QuickStyleDef list, not a global enum, so a name
+# means whatever the page says it means. A number is passed through: callers copy it from read_page.
+function Resolve-QuickStyleIndex($pageNode, $value) {
+	if ($null -eq $value) { return $null }
+	if (-not ($value -is [string])) { return [int]$value }
+	$name = $value.Trim()
+	if ($name -match '^\d+$') { return [int]$name }
+	$wanted = $name.ToLowerInvariant()
+	if ($QUICK_STYLE_ALIASES.ContainsKey($wanted)) { $wanted = $QUICK_STYLE_ALIASES[$wanted] }
+	$defs = @{}
+	if ($null -ne $pageNode) {
+		foreach ($def in $pageNode.SelectNodes('*[local-name()="QuickStyleDef"]')) {
+			$key = $def.GetAttribute('name').ToLowerInvariant()
+			if (-not $defs.ContainsKey($key)) { $defs[$key] = [int]$def.GetAttribute('index') }
+		}
+	}
+	if ($defs.ContainsKey($wanted)) { return $defs[$wanted] }
+	$known = (@($defs.Keys) | Sort-Object) -join ', '
+	if ([string]::IsNullOrEmpty($known)) { $known = 'none' }
+	Fail ('no quick style named "' + $name + '" on this page; it defines: ' + $known + '. Pass the index from read_page instead.') 'invalid_request'
+}
+
+# Returns the one:OE open tag, its list and its text, but not the closing tag: the tree builder closes
+# it after any children, because a paragraph's children live inside its own OE.
+function New-ParagraphOeXml($p, $pageNode) {
+	$attrs = ''
+	$style = $p.style
+	if ($null -ne $style) {
+		$css = New-Object System.Collections.ArrayList
+		$family = [string](Get-Field $style 'fontFamily')
+		if (-not [string]::IsNullOrEmpty($family)) { [void]$css.Add('font-family:' + $family) }
+		$fontSize = Get-Field $style 'fontSize'
+		if ($null -ne $fontSize) { [void]$css.Add('font-size:' + (Format-Double $fontSize) + 'pt') }
+		$color = [string](Get-Field $style 'color')
+		if (-not [string]::IsNullOrEmpty($color)) { [void]$css.Add('color:' + $color) }
+		if ($css.Count -gt 0) { $attrs = $attrs + ' style="' + ($css -join ';') + '"' }
+	}
+	$quickStyle = Resolve-QuickStyleIndex $pageNode $p.quickStyle
+	if ($null -ne $quickStyle) { $attrs = $attrs + ' quickStyleIndex="' + $quickStyle + '"' }
+	if (-not [string]::IsNullOrEmpty($p.alignment)) { $attrs = $attrs + ' alignment="' + $p.alignment + '"' }
+	if ($null -ne $p.spaceBefore) { $attrs = $attrs + ' spaceBefore="' + (Format-Double $p.spaceBefore) + '"' }
+	if ($null -ne $p.spaceAfter) { $attrs = $attrs + ' spaceAfter="' + (Format-Double $p.spaceAfter) + '"' }
+
+	$list = ''
+	if ($p.list -eq 'bullet') { $list = '<one:List><one:Bullet bullet="2"/></one:List>' }
+	# numberFormat is a pattern, not a name, and text is the rendered number OneNote starts from.
+	elseif ($p.list -eq 'number') { $list = '<one:List><one:Number numberSequence="0" numberFormat="##." text="1."/></one:List>' }
+
+	$inner = Get-EscapedText $p.text
+	$spans = New-Object System.Collections.ArrayList
+	if ($null -ne $style) {
+		if ((Get-Field $style 'bold') -eq $true) { [void]$spans.Add('font-weight:bold') }
+		if ((Get-Field $style 'italic') -eq $true) { [void]$spans.Add('font-style:italic') }
+		$decoration = New-Object System.Collections.ArrayList
+		if ((Get-Field $style 'underline') -eq $true) { [void]$decoration.Add('underline') }
+		if ((Get-Field $style 'strikethrough') -eq $true) { [void]$decoration.Add('line-through') }
+		if ($decoration.Count -gt 0) { [void]$spans.Add('text-decoration:' + ($decoration -join ' ')) }
+		$highlight = [string](Get-Field $style 'highlight')
+		if (-not [string]::IsNullOrEmpty($highlight)) { [void]$spans.Add('background:' + $highlight) }
+	}
+	if ($spans.Count -gt 0) { $inner = "<span style='" + ($spans -join ';') + "'>" + $inner + '</span>' }
+	$inner = $inner.Replace(']]>', ']]]]><![CDATA[>')
+	return '<one:OE' + $attrs + '>' + $list + '<one:T><![CDATA[' + $inner + ']]></one:T>'
+}
+
+# Expands the flat (depth) list into nested one:OEChildren and returns the whole container, so that
+# both a new outline and an append into an existing one can use it.
+function New-ParagraphsXml($paragraphs, $pageNode) {
+	$sb = New-Object System.Text.StringBuilder
+	[void]$sb.Append('<one:OEChildren>')
+	# One flag per open level: whether that paragraph's OEChildren has been opened.
+	$levels = New-Object System.Collections.ArrayList
+	foreach ($p in $paragraphs) {
+		$depth = [int]$p.depth
+		if ($depth -gt $levels.Count) { Fail ('paragraph depth ' + $depth + ' skips a level') 'invalid_request' }
+		if ($depth -eq $levels.Count) {
+			if ($levels.Count -gt 0) {
+				[void]$sb.Append('<one:OEChildren>')
+				$levels[$levels.Count - 1] = $true
+			}
+			[void]$levels.Add($false)
+		}
+		else {
+			for ($i = $levels.Count - 1; $i -ge $depth; $i--) {
+				if ($levels[$i]) { [void]$sb.Append('</one:OEChildren>') }
+				[void]$sb.Append('</one:OE>')
+				$levels.RemoveAt($i)
+			}
+			[void]$levels.Add($false)
+		}
+		[void]$sb.Append((New-ParagraphOeXml $p $pageNode))
+	}
+	for ($i = $levels.Count - 1; $i -ge 0; $i--) {
+		if ($levels[$i]) { [void]$sb.Append('</one:OEChildren>') }
+		[void]$sb.Append('</one:OE>')
+	}
+	[void]$sb.Append('</one:OEChildren>')
+	return $sb.ToString()
+}
+
+function New-OutlineXml($paragraphs, $position, $pageNode) {
 	$sb = New-Object System.Text.StringBuilder
 	[void]$sb.Append('<one:Outline>')
 	if ($null -ne $position) {
@@ -495,11 +657,8 @@ function New-OutlineXml([string[]]$lines, $position) {
 			[void]$sb.Append('<one:Size width="' + (Format-Double $position.width) + '" height="' + (Format-Double $position.height) + '"/>')
 		}
 	}
-	[void]$sb.Append('<one:OEChildren>')
-	foreach ($line in $lines) {
-		[void]$sb.Append('<one:OE><one:T>' + (New-TextCdata $line) + '</one:T></one:OE>')
-	}
-	[void]$sb.Append('</one:OEChildren></one:Outline>')
+	[void]$sb.Append((New-ParagraphsXml $paragraphs $pageNode))
+	[void]$sb.Append('</one:Outline>')
 	return $sb.ToString()
 }
 
@@ -668,15 +827,20 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 		if ($null -eq $item) { continue }
 		$target = [string](Get-Field $item 'objectID')
 		$blocks = New-Object System.Collections.ArrayList
-		foreach ($l in @(Get-Field $item 'lines')) {
-			if ($null -eq $l) { continue }
-			$text = [string]$l
-			[void]$blocks.Add(@{ xml = '<one:OE><one:T>' + (New-TextCdata $text) + '</one:T></one:OE>'; label = $text })
+		$paragraphs = @(Get-Paragraphs $item)
+		if ($paragraphs.Count -gt 0) {
+			# New-ParagraphsXml returns the whole OEChildren; the outline being resent already has one.
+			$xml = New-ParagraphsXml $paragraphs $pageNode
+			$xml = $xml.Substring('<one:OEChildren>'.Length)
+			$xml = $xml.Substring(0, $xml.Length - '</one:OEChildren>'.Length)
+			$labels = New-Object System.Collections.ArrayList
+			foreach ($p in $paragraphs) { [void]$labels.Add($p.text) }
+			[void]$blocks.Add(@{ xml = $xml; labels = @($labels) })
 		}
 		foreach ($x in @(Get-Field $item 'xml')) {
 			if ($null -eq $x) { continue }
 			if (-not $allowRawXml) { Fail 'raw xml is not accepted in an edit; use lines' 'invalid_request' }
-			[void]$blocks.Add(@{ xml = [string]$x; label = '[raw block]' })
+			[void]$blocks.Add(@{ xml = [string]$x; labels = @('[raw block]') })
 		}
 		if ($blocks.Count -eq 0) { Fail 'every append entry needs lines or xml' 'invalid_request' }
 
@@ -688,7 +852,7 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 		if ($null -eq $outline) { Fail ('no outline or paragraph with objectID ' + $target + ' on this page') 'not_found' }
 		$outlineId = $outline.GetAttribute('objectID')
 		if (-not $plan.ContainsKey($outlineId)) { $plan[$outlineId] = @{ set = @{}; remove = @{}; append = @() } }
-		$plan[$outlineId].append += , @{ blocks = @($blocks) }
+		$plan[$outlineId].append += , @{ blocks = @($blocks); after = [string](Get-Field $item 'after') }
 	}
 
 	if ($plan.Count -eq 0) { Fail 'nothing to change: pass set, remove or append' 'invalid_request' }
@@ -737,9 +901,40 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 		}
 
 		foreach ($entry in $plan[$outlineId].append) {
+			$anchor = [string]$entry.after
+			if ([string]::IsNullOrEmpty($anchor)) {
+				foreach ($block in $entry.blocks) {
+					[void]$parts.Add($block.xml)
+					foreach ($label in $block.labels) { [void]$after.Add($label) }
+				}
+				continue
+			}
+
+			# An anchor may sit at any depth, but only the outline's top-level children are rebuilt here,
+			# so the block is spliced into the child that contains the anchor. The anchor's own XML is a
+			# unique substring of that child (objectIDs are unique), which makes the splice exact.
+			$anchorOe = Get-OeByObjectId $outline $anchor
+			if ($null -eq $anchorOe) { Fail ('no paragraph with objectID ' + $anchor + ' in outline ' + $outlineId) 'not_found' }
+			if ($setMap.ContainsKey($anchor) -or $removeMap.ContainsKey($anchor)) {
+				Fail ('cannot insert after ' + $anchor + ' while the same call changes or removes it') 'invalid_request'
+			}
+			$anchorXml = [regex]::Replace($anchorOe.OuterXml, '\s+xmlns:one="[^"]*"', '')
+			$blockXml = ''
+			foreach ($block in $entry.blocks) { $blockXml = $blockXml + $block.xml }
+			$placed = $false
+			for ($i = 0; $i -lt $parts.Count; $i++) {
+				$at = $parts[$i].IndexOf($anchorXml, [StringComparison]::Ordinal)
+				if ($at -lt 0) { continue }
+				if ($parts[$i].IndexOf($anchorXml, $at + $anchorXml.Length, [StringComparison]::Ordinal) -ge 0) {
+					Fail ('paragraph ' + $anchor + ' appears more than once in its outline') 'unsupported'
+				}
+				$parts[$i] = $parts[$i].Substring(0, $at + $anchorXml.Length) + $blockXml + $parts[$i].Substring($at + $anchorXml.Length)
+				$placed = $true
+				break
+			}
+			if (-not $placed) { Fail ('could not find paragraph ' + $anchor + ' in the outline being resent') 'not_found' }
 			foreach ($block in $entry.blocks) {
-				[void]$parts.Add($block.xml)
-				[void]$after.Add($block.label)
+				foreach ($label in $block.labels) { [void]$after.Add($label) }
 			}
 		}
 
@@ -905,7 +1100,7 @@ function Invoke-Request([string]$stem) {
 				[xml]$secDoc = Get-HierarchyXml $onenote $secId 0
 				$sectionName = $secDoc.DocumentElement.GetAttribute('name')
 				$title = [string]$req.title
-				$lines = Get-RequestedLines $req
+				$paragraphs = @(Get-Paragraphs $req)
 				$fingerprint = Get-Sha256Hex ('create:' + $secId)
 				Assert-Fingerprint $req $fingerprint
 				if (-not (Test-Apply $req)) {
@@ -919,21 +1114,30 @@ function Invoke-Request([string]$stem) {
 					if (-not [string]::IsNullOrEmpty($title)) {
 						Send-PageUpdate $onenote $newId ('<one:Title><one:OE><one:T>' + (New-TextCdata $title) + '</one:T></one:OE></one:Title>')
 					}
-					if ($lines.Count -gt 0) { Send-PageUpdate $onenote $newId (New-OutlineXml $lines $null) }
+					if ($paragraphs.Count -gt 0) {
+						$pageNode = $null
+						# A quick style given by name is resolved against the page's own QuickStyleDef list.
+						if (Test-QuickStyleNames $paragraphs) { [xml]$pageDoc = Get-PageContentXml $onenote $newId; $pageNode = $pageDoc.DocumentElement }
+						Send-PageUpdate $onenote $newId (New-OutlineXml $paragraphs $null $pageNode)
+					}
 					Write-Response @{ ok = $true; data = @{ applied = $true; fingerprint = $fingerprint; sectionId = $secId; section = $sectionName; page = (Read-PageById $onenote $newId); elapsedMs = [int]$sw.ElapsedMilliseconds } }
 				}
 			}
 
 			'append' {
 				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-				$lines = Get-RequestedLines $req
-				if ($lines.Count -eq 0) { Fail 'no lines to append' 'invalid_request' }
+				$paragraphs = @(Get-Paragraphs $req)
+				if ($paragraphs.Count -eq 0) { Fail 'no lines to append' 'invalid_request' }
 				# Appending is additive and cannot clobber a concurrent edit, so the fingerprint only has to
 				# tie the apply to the page that was previewed.
 				$fingerprint = Get-Sha256Hex ('page:' + $page.id)
 				Assert-Fingerprint $req $fingerprint
 				$applied = (Test-Apply $req)
-				if ($applied) { Send-PageUpdate $onenote $page.id (New-OutlineXml $lines $req.position) }
+				if ($applied) {
+					$pageNode = $null
+					if (Test-QuickStyleNames $paragraphs) { [xml]$pageDoc = Get-PageContentXml $onenote $page.id; $pageNode = $pageDoc.DocumentElement }
+					Send-PageUpdate $onenote $page.id (New-OutlineXml $paragraphs $req.position $pageNode)
+				}
 				Write-Response @{ ok = $true; data = @{
 						applied     = $applied
 						fingerprint = $fingerprint
@@ -967,6 +1171,15 @@ function Invoke-Request([string]$stem) {
 				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
 				$block = New-TableOeXml (Get-RequestedLines @{ lines = $req.headers }) $req.rows ([bool]$req.bordersVisible) ([bool]$req.hasHeaderRow) $req.columnWidths
 				$outlineId = [string]$req.outline
+				$after = [string]$req.after
+				if (-not [string]::IsNullOrEmpty($after) -and [string]::IsNullOrEmpty($outlineId)) {
+					[xml]$anchorDoc = Get-PageContentXml $onenote $page.id
+					$anchorOe = Get-OeByObjectId $anchorDoc.DocumentElement $after
+					if ($null -eq $anchorOe) { Fail ('no paragraph with objectID ' + $after + ' on this page') 'not_found' }
+					$owner = Get-OwnerOutline $anchorOe
+					if ($null -eq $owner) { Fail ('paragraph ' + $after + ' is not inside an outline') 'unsupported' }
+					$outlineId = $owner.GetAttribute('objectID')
+				}
 
 				$fingerprint = ''
 				if ([string]::IsNullOrEmpty($outlineId)) {
@@ -976,7 +1189,7 @@ function Invoke-Request([string]$stem) {
 				}
 				else {
 					[xml]$doc = Get-PageContentXml $onenote $page.id
-					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
+					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block); after = $after }) } $true
 					$fingerprint = Get-PlanFingerprint $page.id $plan
 					Assert-Fingerprint $req $fingerprint
 					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }
@@ -996,6 +1209,15 @@ function Invoke-Request([string]$stem) {
 				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
 				$block = New-ImageOeXml ([string]$req.base64) ([string]$req.format) $req.width $req.height ([string]$req.alt)
 				$outlineId = [string]$req.outline
+				$after = [string]$req.after
+				if (-not [string]::IsNullOrEmpty($after) -and [string]::IsNullOrEmpty($outlineId)) {
+					[xml]$anchorDoc = Get-PageContentXml $onenote $page.id
+					$anchorOe = Get-OeByObjectId $anchorDoc.DocumentElement $after
+					if ($null -eq $anchorOe) { Fail ('no paragraph with objectID ' + $after + ' on this page') 'not_found' }
+					$owner = Get-OwnerOutline $anchorOe
+					if ($null -eq $owner) { Fail ('paragraph ' + $after + ' is not inside an outline') 'unsupported' }
+					$outlineId = $owner.GetAttribute('objectID')
+				}
 
 				$fingerprint = ''
 				if ([string]::IsNullOrEmpty($outlineId)) {
@@ -1005,7 +1227,7 @@ function Invoke-Request([string]$stem) {
 				}
 				else {
 					[xml]$doc = Get-PageContentXml $onenote $page.id
-					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block) }) } $true
+					$plan = New-EditPlan $doc.DocumentElement @{ append = @(@{ objectID = $outlineId; xml = @($block); after = $after }) } $true
 					$fingerprint = Get-PlanFingerprint $page.id $plan
 					Assert-Fingerprint $req $fingerprint
 					if (Test-Apply $req) { Send-PageUpdate $onenote $page.id $plan.inner }

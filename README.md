@@ -50,6 +50,12 @@ a client's default tool timeout (Pi: 60 s) and no client-side `timeout` setting 
 | `edit`                                                     | rewrites paragraphs in place            |
 | `delete_page`                                              | moves a page to the notebook recycle bin |
 
+A paragraph is a plain string, or an object with `text`, `depth`, `list`, `quickStyle`, `alignment`,
+`spaceBefore`, `spaceAfter` and `style` (`fontFamily`, `fontSize`, `color`, `bold`, `italic`,
+`underline`, `strikethrough`, `highlight`). `depth` nests a paragraph under the nearest earlier one at
+the previous level, which is how a bullet tree is written. `insert_image`, `insert_table` and `edit`'s
+append take `after`: the objectID of a paragraph to insert after, at any depth.
+
 ### Writes are two steps
 
 Every write tool is a dry run unless told otherwise. A call without `dryRun=false` writes nothing.
