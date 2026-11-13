@@ -27,10 +27,11 @@ $script:WORK = $Work
 $PROBE_BUSY_S = 1
 $X = 'xmlns:one="http://schemas.microsoft.com/office/onenote/2013/onenote"'
 
-function Com([string]$hex) {
+function Com([string]$hex, [string]$msg = '') {
 	$bits = [uint32]::Parse($hex.Substring(2), [Globalization.NumberStyles]::AllowHexSpecifier)
 	$hr = [BitConverter]::ToInt32([BitConverter]::GetBytes($bits), 0)
-	return [Runtime.InteropServices.COMException]::new('fake ' + $hex, $hr)
+	if ([string]::IsNullOrEmpty($msg)) { $msg = 'fake ' + $hex }
+	return [Runtime.InteropServices.COMException]::new($msg, $hr)
 }
 
 function New-Fake($b) {
@@ -108,6 +109,9 @@ try {
 	Case 'append_gone' (Append-Req) @{ Update = { throw (Com '0x800706BA') } }
 	Case 'append_efail' (Append-Req) @{ Update = { throw (Com '0x80004005') } }
 	Case 'append_onenote_timeout' (Append-Req) @{ Update = { throw (Com '0x80042023') } }
+	Case 'append_object_missing' (Append-Req) @{ Update = { throw (Com '0x8004200E') } }
+	Case 'append_unknown_in_range' (Append-Req) @{ Update = { throw (Com '0x8004207F') } }
+	Case 'append_unknown_long' (Append-Req) @{ Update = { throw (Com '0x80004005' ('x' * 4000)) } }
 	Case 'append_readback_fails' (Append-Req) @{ Read = { param($f) if ($f.Updated) { throw (Com '0x80042014') } } }
 	Case 'delete_ok' (Delete-Req) @{}
 	Case 'delete_refused' (Delete-Req) @{ Delete = { throw (Com '0x80042014') } }
@@ -192,6 +196,8 @@ def outcomes() -> dict[str, dict[str, Any]]:
         ("append_gone", False, "outcome_unknown"),
         ("append_efail", False, "outcome_unknown"),
         ("append_onenote_timeout", False, "outcome_unknown"),
+        ("append_object_missing", False, "rejected"),
+        ("append_unknown_in_range", False, "outcome_unknown"),
         ("delete_ok", True, None),
         ("delete_refused", False, "rejected"),
         ("delete_gone", False, "outcome_unknown"),
@@ -204,6 +210,39 @@ def test_a_failure_around_a_write_is_classified_by_what_is_known(outcomes, name,
     outcome = outcomes[name]
     assert outcome["ok"] is ok, outcome
     assert outcome["code"] == code, outcome
+
+
+def test_the_error_text_of_each_classification_is_pinned(outcomes):
+    # A wording change is a contract change: it belongs in a commit that says so, not in a drive-by edit.
+    assert outcomes["append_stale"]["error"] == (
+        "OneNote refused the update as stale (0x80042010); re-read the page and retry"
+    )
+    assert outcomes["append_busy"]["error"] == (
+        "OneNote is busy (0x80010001) and did not update the page; try again shortly"
+    )
+    assert outcomes["append_rejected"]["error"] == (
+        "OneNote refused to update the page (0x80042001): fake 0x80042001"
+    )
+    assert outcomes["append_gone"]["error"] == (
+        "Read the page again and preview before retrying: whether OneNote managed to update the page "
+        "is unknown (0x800706BA): fake 0x800706BA"
+    )
+
+
+def test_an_unrecognised_code_in_the_onenote_range_is_not_called_refused(outcomes):
+    # The write may have landed; calling it refused would invite a retry that duplicates it.
+    outcome = outcomes["append_unknown_in_range"]
+    assert outcome["code"] == "outcome_unknown", outcome
+    assert outcome["error"].startswith("Read the page again and preview before retrying"), outcome
+
+
+def test_a_long_diagnostic_does_not_push_the_guidance_out_of_the_reply(outcomes):
+    outcome = outcomes["append_unknown_long"]
+    assert outcome["code"] == "outcome_unknown", outcome
+    assert outcome["error"].startswith("Read the page again and preview before retrying"), outcome
+    assert "0x80004005" in outcome["error"], outcome
+    assert len(outcome["error"]) < 500, outcome
+    assert "x" * 400 not in outcome["error"], outcome
 
 
 def test_a_write_that_returned_is_never_called_refused(outcomes):

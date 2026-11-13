@@ -71,6 +71,11 @@ FAKE = textwrap.dedent(
         elif behave == "garbled":
             with open(os.path.join(work, f"resp-{{stem}}.json"), "w", encoding="utf-8") as out:
                 out.write("{{not json")
+        elif behave == "nodata":
+            respond({{"ok": True}})
+        elif behave == "notdict":
+            with open(os.path.join(work, f"resp-{{stem}}.json"), "w", encoding="utf-8") as out:
+                out.write("[]")
         elif behave == "longline":
             say("x" * 2_000_000)
         else:
@@ -188,6 +193,76 @@ async def test_a_missing_response_is_reported_and_the_worker_stays(env):
 @pytest.mark.parametrize("behave", ["silent", "garbled"])
 @pytest.mark.parametrize(("apply", "code"), [(False, "no_response"), (True, "outcome_unknown")])
 async def test_a_write_without_a_readable_response_is_outcome_unknown(env, behave, apply, code):
+    bridge = env.bridge()
+    first = await bridge("a", {})
+    with pytest.raises(BridgeError) as raised:
+        await bridge("append", {"behave": behave, "apply": apply})
+    assert raised.value.code == code
+    assert (await bridge("b", {}))["pid"] == first["pid"]
+    await bridge.close()
+
+
+async def test_the_transport_error_text_is_pinned(env):
+    # A wording change is a contract change: it belongs in a commit that says so, not in a drive-by edit.
+    bridge = env.bridge()
+    with pytest.raises(BridgeError) as missing:
+        await bridge("read_page", {"behave": "silent"})
+    assert str(missing.value) == (
+        "OneNote bridge produced no response; the bridge script may have failed before it could report an error"
+    )
+    with pytest.raises(BridgeError) as malformed:
+        await bridge("read_page", {"behave": "nodata"})
+    assert str(malformed.value) == (
+        "OneNote bridge produced a malformed response; the bridge script may have failed before it could "
+        "report an error"
+    )
+    with pytest.raises(BridgeError) as write_missing:
+        await bridge("append", {"behave": "silent", "apply": True})
+    assert str(write_missing.value) == (
+        "OneNote bridge produced no readable response for a write, so whether OneNote applied it is unknown. "
+        "Read the page again and preview before retrying."
+    )
+    with pytest.raises(BridgeError) as write_malformed:
+        await bridge("append", {"behave": "notdict", "apply": True})
+    assert str(write_malformed.value) == (
+        "OneNote bridge produced a malformed response for a write, so whether OneNote applied it is unknown. "
+        "Read the page again and preview before retrying."
+    )
+    await bridge.close()
+
+
+async def test_the_transport_error_text_of_a_worker_that_died_mid_write_is_pinned(env):
+    bridge = env.bridge()
+    first = await bridge("a", {})
+    with pytest.raises(BridgeError) as raised:
+        await bridge("edit", {"behave": "exit", "apply": True})
+    assert str(raised.value) == (
+        "powershell.exe exited while a write was in flight, so whether OneNote applied it is unknown. "
+        "Read the page again and preview before retrying."
+    )
+    assert bridge.worker_pid is None
+    assert await _gone(first["pid"])
+    assert env.leftovers() == []
+    await bridge.close()
+
+
+async def test_the_transport_error_text_of_a_write_timeout_is_pinned(env):
+    bridge = env.bridge(timeout=0.5)
+    first = await bridge("a", {})
+    with pytest.raises(BridgeError) as raised:
+        await bridge("edit", {"behave": "hang", "apply": True})
+    assert str(raised.value) == (
+        "The call timed out while a write was in flight, so whether OneNote applied it is unknown. OneNote "
+        "may be showing a sign-in or update dialog, or be hung. Read the page again and preview before retrying."
+    )
+    assert await _gone(first["pid"])
+    assert env.leftovers() == []
+    await bridge.close()
+
+
+@pytest.mark.parametrize("behave", ["nodata", "notdict"])
+@pytest.mark.parametrize(("apply", "code"), [(False, "no_response"), (True, "outcome_unknown")])
+async def test_a_response_of_the_wrong_shape_is_not_a_verdict(env, behave, apply, code):
     bridge = env.bridge()
     first = await bridge("a", {})
     with pytest.raises(BridgeError) as raised:

@@ -208,8 +208,8 @@ called a refusal when OneNote is known to have refused; anything else may have l
 | no COM call was made (PowerShell conversion or binding error)    | `com_error`        |
 | `0x80010001`, `0x8001010A` (turned away while busy), `0x80042024` (recording)  | `busy`             |
 | `0x80042010`                                                     | `stale`            |
-| any other `0x800420xx` except `0x80042023`                       | `rejected`         |
-| connection lost (`0x800706BA/BE/BF`, ...), `0x80042023` (OneNote's own timeout), anything unrecognised | `outcome_unknown`  |
+| `0x80042001`, `0x8004200E`, `0x80042014`, `0x80042022` (refusals OneNote is known to make) | `rejected` |
+| connection lost (`0x800706BA/BE/BF`, ...), `0x80042023` (OneNote's own timeout), any other `0x800420xx`, anything unrecognised | `outcome_unknown`  |
 | the write call returned, then something else failed              | `applied_unverified` |
 
 `applied_unverified` is decided by `$script:MUTATED`, set right after a write call returns: `Fail` and the catch in

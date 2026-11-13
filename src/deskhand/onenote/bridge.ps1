@@ -682,25 +682,34 @@ $HR_STALE_PAGE = '0x80042010'
 # The call was turned away before OneNote ran it, so nothing was written.
 $HR_BUSY = @('0x80010001', '0x8001010A')
 $HR_RECORDING = '0x80042024'
-# OneNote's own "the action timed out": it may or may not have finished the write.
-$HR_ONENOTE_TIMEOUT = '0x80042023'
+# Refusals OneNote is known to make: the request was rejected and nothing was written. The rest of the
+# 0x800420xx range is not assumed, because a code this bridge has never seen may follow a partial write.
+# 0x80042023 is OneNote's own timeout and 0x80042024 means recording, so neither is a refusal.
+$HR_REFUSED = @('0x80042001', '0x8004200E', '0x80042014', '0x80042022')
+# A COM diagnostic can be arbitrarily long and a client cuts a long reply in the middle.
+$DIAGNOSTIC_MAX = 300
 # The server went away or the connection broke, possibly after it applied the write.
 $HR_GONE = @('0x800706BA', '0x800706BE', '0x800706BF', '0x80010108', '0x80010012', '0x80010007', '0x800401FD')
 
-# The HRESULT of the first exception that is not a PowerShell or reflection wrapper, or '' when the failure
-# never reached a COM call. MethodInvocationException is what PowerShell puts around an exception thrown by a
-# method, so it is looked through. Any other exception PowerShell raised itself (a failed conversion, a binding
-# error) implements IContainsErrorRecord and means no call was made, whatever it wraps; a COM exception does not
-# implement it.
-function Get-HResultHex($errorRecord) {
+# The exception that actually failed: the first one that is not a PowerShell or reflection wrapper, or $null
+# when the failure never reached a COM call. MethodInvocationException is what PowerShell puts around an
+# exception thrown by a method, so it is looked through. Any other exception PowerShell raised itself (a failed
+# conversion, a binding error) implements IContainsErrorRecord and means no call was made, whatever it wraps; a
+# COM exception does not implement it.
+function Get-FailureException($errorRecord) {
 	$e = $errorRecord.Exception
 	while ($null -ne $e) {
 		if ($e -is [Management.Automation.MethodInvocationException] -or $e -is [Reflection.TargetInvocationException] -or $e.GetType() -eq [Management.Automation.RuntimeException]) {
 			$e = $e.InnerException
 		}
-		elseif ($e -is [Management.Automation.IContainsErrorRecord]) { return '' }
+		elseif ($e -is [Management.Automation.IContainsErrorRecord]) { return $null }
 		else { break }
 	}
+	return $e
+}
+
+function Get-HResultHex($errorRecord) {
+	$e = Get-FailureException $errorRecord
 	if ($null -eq $e) { return '' }
 	# Casting a negative Int32 straight to UInt32 throws in PowerShell; go through BitConverter.
 	$unsigned = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$e.HResult), 0)
@@ -713,20 +722,33 @@ function Get-WriteFailureCode([string]$hex) {
 	if ([string]::IsNullOrEmpty($hex)) { return 'com_error' }
 	if ($hex -in $HR_BUSY -or $hex -eq $HR_RECORDING) { return 'busy' }
 	if ($hex -eq $HR_STALE_PAGE) { return 'stale' }
-	if ($hex -like '0x800420*' -and $hex -ne $HR_ONENOTE_TIMEOUT) { return 'rejected' }
+	if ($hex -in $HR_REFUSED) { return 'rejected' }
 	return 'outcome_unknown'
+}
+
+# The classification and the HRESULT stay; only the free text is shortened, and never inside a surrogate pair.
+function Limit-Diagnostic([string]$text) {
+	if ($text.Length -le $DIAGNOSTIC_MAX) { return $text }
+	$cut = $DIAGNOSTIC_MAX
+	if ([char]::IsHighSurrogate($text[$cut - 1])) { $cut = $cut - 1 }
+	return $text.Substring(0, $cut) + '...'
 }
 
 function Fail-Write($errorRecord, [string]$action) {
 	$hex = Get-HResultHex $errorRecord
 	$code = Get-WriteFailureCode $hex
-	$why = $errorRecord.Exception.Message
+	# The wrapper PowerShell puts around a COM exception is noise; the reason is the inner message.
+	$failure = Get-FailureException $errorRecord
+	$why = if ($null -eq $failure) { $errorRecord.Exception.Message } else { $failure.Message }
+	$why = Limit-Diagnostic $why
 	switch ($code) {
 		'stale' { Fail ('OneNote refused the update as stale (' + $hex + '); re-read the page and retry') $code }
 		'busy' { Fail ('OneNote is busy (' + $hex + ') and did not ' + $action + '; try again shortly') $code }
 		'rejected' { Fail ('OneNote refused to ' + $action + ' (' + $hex + '): ' + $why) $code }
 		'outcome_unknown' {
-			Fail ('Whether OneNote managed to ' + $action + ' is unknown (' + $hex + '): ' + $why + '. Read the page again and preview before retrying.') $code
+			# The guidance comes first so a client that cuts the reply cannot remove it.
+			Fail ('Read the page again and preview before retrying: whether OneNote managed to ' + $action +
+				' is unknown (' + $hex + '): ' + $why) $code
 		}
 		default { Fail ('Could not ' + $action + ': ' + $why) $code }
 	}

@@ -54,6 +54,21 @@ class BridgeError(Exception):
         self.code = code
 
 
+def _malformed_response(applying: bool) -> BridgeError:
+    """A well-formed line is not a verdict: an answer this code cannot read may still follow a write."""
+    if applying:
+        return BridgeError(
+            "OneNote bridge produced a malformed response for a write, so whether OneNote applied it is "
+            "unknown. Read the page again and preview before retrying.",
+            "outcome_unknown",
+        )
+    return BridgeError(
+        "OneNote bridge produced a malformed response; the bridge script may have failed before it could "
+        "report an error",
+        "no_response",
+    )
+
+
 @dataclass(frozen=True)
 class WorkDir:
     win: str
@@ -535,7 +550,12 @@ class PowerShellBridge:
                 "could report an error",
                 "no_response",
             ) from None
+        if not isinstance(parsed, dict) or "ok" not in parsed:
+            raise _malformed_response(applying)
         if not parsed.get("ok"):
             code = parsed.get("code") or "error"
             raise BridgeError(f"OneNote {code}: {parsed.get('error')}", code)
-        return parsed["data"]
+        data = parsed.get("data")
+        if not isinstance(data, dict):
+            raise _malformed_response(applying)
+        return data
