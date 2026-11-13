@@ -1,0 +1,14 @@
+{
+  "name": "deskhand",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "deskhand: MCP servers that drive live Windows desktop applications from WSL. This manifest exists so the repository itself can be installed as a pi package; the extension lives in integrations/pi.",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./integrations/pi/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
