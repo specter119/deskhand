@@ -71,7 +71,7 @@ def test_the_server_answers_json_rpc_on_stdout_only():
     assert replies[1]["result"]["serverInfo"] == {"name": "onenote", "version": __version__}
     assert replies[1]["result"]["instructions"]
     tools = replies[2]["result"]["tools"]
-    assert len(tools) == 10
+    assert len(tools) == 11
     assert tools[0]["inputSchema"]["type"] == "object" and "outputSchema" in tools[0]
 
     refused = replies[3]["result"]

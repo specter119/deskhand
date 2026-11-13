@@ -19,11 +19,20 @@ TOOLS = [
     "insert_image",
     "edit",
     "delete_page",
+    "batch",
 ]
-WRITE_TOOLS = ["create_page", "append_lines", "insert_table", "insert_image", "edit", "delete_page"]
+WRITE_TOOLS = [
+    "create_page",
+    "append_lines",
+    "insert_table",
+    "insert_image",
+    "edit",
+    "delete_page",
+    "batch",
+]
 
 
-async def test_list_tools_exposes_the_ten_tools_with_titles_annotations_and_schemas():
+async def test_list_tools_exposes_the_eleven_tools_with_titles_annotations_and_schemas():
     async with connect() as t:
         tools = (await t.client.list_tools()).tools
         assert sorted(tool.name for tool in tools) == sorted(TOOLS)
@@ -38,7 +47,7 @@ async def test_list_tools_exposes_the_ten_tools_with_titles_annotations_and_sche
             properties = by_name[name].input_schema["properties"]
             assert "dryRun" in properties and "applyToken" in properties, name
             assert "applyToken" in (by_name[name].description or "")
-        for name in ("edit", "delete_page"):
+        for name in ("edit", "delete_page", "batch"):
             annotations = by_name[name].annotations
             assert annotations and annotations.destructive_hint is True, name
         assert t.client.instructions == INSTRUCTIONS
@@ -350,3 +359,159 @@ async def test_a_short_edit_keeps_the_preview_it_always_had():
         assert '  - delete "gone"' in text, text
         assert '  resulting paragraphs: "a", "b"' in text, text
         assert "New paragraphs:" not in text, text
+
+
+async def test_batch_previews_every_change_and_applies_them_in_order_with_their_own_fingerprints():
+    bridge = FakeBridge({"append": preview_handler("fp-append"), "insert_table": preview_handler("fp-table")})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a", "b"]]},
+    ]
+    async with connect(bridge) as t:
+        preview = await t.call("batch", {"ops": ops})
+        assert not preview.is_error, text_of(preview)
+        text = text_of(preview)
+        assert text.split("\n")[0].startswith("applyToken: ")
+        assert "2 changes, applied in this order:" in text
+        assert "1. Append 1 paragraph(s) to p1" in text
+        assert "2. Insert a 1x2 table into p1" in text
+        assert [call["args"]["apply"] for call in bridge.calls] == [False, False]
+        assert [op["tool"] for op in preview.structured_content["ops"]] == ["append_lines", "insert_table"]
+
+        token = preview.structured_content["applyToken"]
+        applied = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert not applied.is_error, text_of(applied)
+        assert [call["args"]["expectFingerprint"] for call in bridge.apply_calls()] == [
+            "fp-append",
+            "fp-table",
+        ]
+        assert applied.structured_content["status"] == "applied"
+        assert "Applied 2 changes:" in text_of(applied)
+
+
+async def test_batch_refuses_two_changes_that_rewrite_the_same_outline_before_anything_is_written():
+    def edit(args):
+        return {**preview_handler()(args), "changes": [{"outlineId": "ol-1"}]}
+
+    def table(args):
+        return {**preview_handler()(args), "outlineId": "ol-1"}
+
+    bridge = FakeBridge({"edit": edit, "insert_table": table})
+    ops = [
+        {"tool": "edit", "pageId": "p1", "set": [{"objectID": "oe-1", "text": "new"}]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]], "after": "oe-1"},
+    ]
+    async with connect(bridge) as t:
+        result = await t.call("batch", {"ops": ops})
+        assert result.is_error is True
+        assert "both rewrite outline ol-1" in text_of(result)
+        assert "two batches" in text_of(result)
+        assert bridge.apply_calls() == []
+
+
+async def test_batch_allows_a_rewrite_and_an_addition_on_the_same_page():
+    def edit(args):
+        return {**preview_handler("fp-edit")(args), "changes": [{"outlineId": "ol-1"}]}
+
+    bridge = FakeBridge({"edit": edit, "append": preview_handler("fp-append")})
+    ops = [
+        {"tool": "edit", "pageId": "p1", "set": [{"objectID": "oe-1", "text": "new"}]},
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+    ]
+    async with connect(bridge) as t:
+        assert not (await t.call("batch", {"ops": ops})).is_error
+
+
+async def test_batch_reports_what_landed_when_a_later_change_fails():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote changed_since_preview: the target changed", "changed_since_preview")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"append": preview_handler("fp-append"), "insert_table": table})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]]},
+        {"tool": "append_lines", "pageId": "p1", "lines": ["b"]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "Applied 1 of 3 changes, then change 2 failed: OneNote changed_since_preview" in text
+        assert "Change 3 was not attempted." in text
+        assert "The applyToken is spent." in text
+        assert len(bridge.apply_calls()) == 2
+
+
+async def test_batch_token_covers_the_whole_op_list_so_a_changed_op_is_refused():
+    bridge = FakeBridge({"append": preview_handler()})
+    ops = [{"tool": "append_lines", "pageId": "p1", "lines": ["a"]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        changed = [{"tool": "append_lines", "pageId": "p1", "lines": ["b"]}]
+        result = await t.call("batch", {"ops": changed, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        assert "arguments differ from the dry run" in text_of(result)
+
+
+@pytest.mark.parametrize(
+    "ops, message",
+    [
+        ([], "batch needs at least one op"),
+        ([{"tool": "create_page", "title": "x"}], "create_page and delete_page"),
+        ([{"tool": "append_lines", "pageId": "p1", "lines": ["a"], "dryRun": True}], "must not carry dryRun"),
+        ([{"tool": "nope", "pageId": "p1"}], "ops[0].tool must be one of"),
+        ([{"pageId": "p1"}], "'tool' is a required property"),
+    ],
+)
+async def test_batch_rejects_ops_it_cannot_preview_and_apply_together(ops, message):
+    async with connect() as t:
+        result = await t.call("batch", {"ops": ops})
+        assert result.is_error is True
+        assert message in text_of(result)
+
+
+async def test_batch_does_not_claim_nothing_was_written_when_the_first_change_is_unknown():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError(
+                "OneNote bridge produced no readable response for a write, so whether OneNote applied it is "
+                "unknown. Read the page again and preview before retrying.",
+                "outcome_unknown",
+            )
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "before anything was written" not in text
+        assert "may or may not have been applied" in text
+
+
+async def test_batch_says_a_later_change_may_have_landed_when_its_outcome_is_unknown():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError(
+                "OneNote bridge produced no readable response for a write, so whether OneNote applied it is "
+                "unknown. Read the page again and preview before retrying.",
+                "outcome_unknown",
+            )
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"append": preview_handler("fp-append"), "insert_table": table})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "Applied 1 of 2 changes, then change 2 may or may not have been applied" in text

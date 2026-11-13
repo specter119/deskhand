@@ -33,7 +33,7 @@ The rest of this file explains _why_, but these are the rules to keep:
 
 | File                     | Role                                                                          |
 | ------------------------ | ----------------------------------------------------------------------------- |
-| `tools.py`               | The ten tools, the dry-run/apply flow, image file reading and base64 encoding |
+| `tools.py`               | The eleven tools, the dry-run/apply flow, image file reading and base64 encoding |
 | `schemas.py`             | Input and output schemas (loose: OneNote may add fields)                      |
 | `format.py`              | Text rendering and normalisation of bridge results (PowerShell array quirks)  |
 | `bridge.ps1`             | The whole COM layer, run by one resident `powershell.exe` per server process  |
@@ -100,8 +100,8 @@ Rules that keep it correct:
 ## Tool surface
 
 Tools are plain MCP tools named `notebooks`, `pages`, `search`, `read_page`, `create_page`,
-`append_lines`, `insert_table`, `insert_image`, `edit` and `delete_page`. Each returns text for the
-transcript and `structuredContent` for scripts, validated against an output schema. Clients such as
+`append_lines`, `insert_table`, `insert_image`, `edit`, `delete_page` and `batch`. Each returns text for
+the transcript and `structuredContent` for scripts, validated against an output schema. Clients such as
 Pi prefix the names (`mcp__onenote__edit`).
 
 | Tool                                                          | Kind                                      |
@@ -110,6 +110,7 @@ Pi prefix the names (`mcp__onenote__edit`).
 | `create_page`, `append_lines`, `insert_table`, `insert_image` | additive                                  |
 | `edit`                                                        | rewrites paragraphs in place, destructive |
 | `delete_page`                                                 | destructive, goes to the recycle bin      |
+| `batch`                                                       | several of the above, one token           |
 
 Reads are free. A write called without `dryRun=false` is a real bridge call that reports the exact
 change set OneNote would receive. Its reply starts with `applyToken: <token>` (long replies get cut
@@ -122,6 +123,15 @@ would be written, so a concurrent change to a different outline does not invalid
 neither does a change that leaves the written result identical. The fingerprint of `append_lines`
 and of inserts as a new outline only ties the token to the page: those writes are additive and
 cannot clobber anything.
+
+`batch` previews several changes with one token and applies them in order. It takes only
+`append_lines`, `insert_table`, `insert_image` and `edit`: `create_page` and `delete_page` need their
+own confirmation, and a page that does not exist yet cannot be previewed with the changes that follow
+it. Because the fingerprint of an outline rewrite covers the outline text, two ops that rewrite the
+same outline would invalidate each other, so those pairs are refused during the dry run, while
+nothing has been written; several changes inside one outline belong in one `edit` call. The apply
+stops at the first failure and its error says which changes landed and which were not attempted:
+a batch is not a transaction and never claims to be one.
 
 A client that wants a human in the loop should gate the apply call (`dryRun === false`); the
 `applyToken` already proves a preview was produced, not that anyone looked at it. Pi does this in

@@ -1,5 +1,5 @@
 {
-  "instructions": "These tools drive the Windows OneNote desktop client through its COM automation interface, from WSL.\nThey work with the user's own signed-in notebooks, so writes land in real notes that sync to SharePoint/OneDrive.\n\nIdentifying a page: prefer pageId, taken from pages or search. When only names are known, pass notebook + section + page together;\na section name that exists in several notebooks is rejected as ambiguous.\n\nWriting is always two steps. Call a write tool without dryRun: nothing is written, the reply starts with 'applyToken: <token>' and shows the exact\nchange OneNote would receive. To apply, repeat the same call with dryRun=false and that applyToken. A token is single use, expires after 10 minutes,\nbelongs to one server process, and is refused when the arguments differ or the target changed in OneNote after the dry run.\nIf an apply is interrupted its outcome is unknown: read the page again and preview before retrying.\n\nEditing text: OneNote replaces an entire outline with whatever one:OEChildren the caller sends, so a paragraph omitted from that list is DELETED.\nThat is why edit exists and why it resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing.\nUse edit for changes inside an outline and append_lines for a new outline at the end of a page. Raw outline XML is never accepted.\n\nFormatting: a line is a plain string, or an object with text, depth, list, quickStyle, alignment, spaceBefore,\nspaceAfter and style (fontFamily, fontSize, colour, bold, italic, underline, strikethrough, highlight). Depth\nnests a paragraph under the nearest earlier one at the previous level, which is how a bullet tree is written.\nA quickStyle name is resolved against the page's own QuickStyleDef list, so pass the index read_page reported\nwhen the page does not define that name. insert_image, insert_table and edit append take after: the objectID\nof a paragraph to insert after, at any depth.\n\nConcurrency: lastModifiedTime does not advance when content is written through COM and the hierarchy API can report a different value than the page\nitself, so it is informational only. Safety comes from the token's content fingerprint, and delete_page additionally requires the exact page name.",
+  "instructions": "These tools drive the Windows OneNote desktop client through its COM automation interface, from WSL.\nThey work with the user's own signed-in notebooks, so writes land in real notes that sync to SharePoint/OneDrive.\n\nIdentifying a page: prefer pageId, taken from pages or search. When only names are known, pass notebook + section + page together;\na section name that exists in several notebooks is rejected as ambiguous.\n\nWriting is always two steps. Call a write tool without dryRun: nothing is written, the reply starts with 'applyToken: <token>' and shows the exact\nchange OneNote would receive. To apply, repeat the same call with dryRun=false and that applyToken. A token is single use, expires after 10 minutes,\nbelongs to one server process, and is refused when the arguments differ or the target changed in OneNote after the dry run.\nIf an apply is interrupted its outcome is unknown: read the page again and preview before retrying.\n\nSeveral changes: batch takes a list of ops, each one of append_lines, insert_table, insert_image or edit with that tool's\narguments; it previews all of them, returns one applyToken and applies them in order. Prefer it when several independent changes to\none page are planned, so the caller confirms once. Two ops that rewrite the same outline are refused: put several changes inside one\noutline in one edit call. create_page and delete_page are not batched. If a change fails, the error says what landed and what was\nnot attempted.\n\nEditing text: OneNote replaces an entire outline with whatever one:OEChildren the caller sends, so a paragraph omitted from that list is DELETED.\nThat is why edit exists and why it resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing.\nUse edit for changes inside an outline and append_lines for a new outline at the end of a page. Raw outline XML is never accepted.\n\nFormatting: a line is a plain string, or an object with text, depth, list, quickStyle, alignment, spaceBefore,\nspaceAfter and style (fontFamily, fontSize, colour, bold, italic, underline, strikethrough, highlight). Depth\nnests a paragraph under the nearest earlier one at the previous level, which is how a bullet tree is written.\nA quickStyle name is resolved against the page's own QuickStyleDef list, so pass the index read_page reported\nwhen the page does not define that name. insert_image, insert_table and edit append take after: the objectID\nof a paragraph to insert after, at any depth.\n\nConcurrency: lastModifiedTime does not advance when content is written through COM and the hierarchy API can report a different value than the page\nitself, so it is informational only. Safety comes from the token's content fingerprint, and delete_page additionally requires the exact page name.",
   "tools": [
     {
       "name": "notebooks",
@@ -3193,6 +3193,387 @@
           "changes": {
             "type": "array",
             "items": {}
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "batch",
+      "title": "Apply several OneNote changes",
+      "description": "Apply several changes with one confirmation. Each op carries tool (append_lines, insert_table, insert_image or edit) plus that tool's arguments. The dry run previews every change and returns one applyToken; the apply runs them in order and stops at the first failure, reporting what landed. Two ops must not rewrite the same outline, because the second fingerprint would be stale once the first is applied: use one edit call for several changes inside an outline. create_page and delete_page are not accepted because they need their own confirmation. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "inputSchema": {
+        "properties": {
+          "ops": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "description": "One of append_lines, insert_table, insert_image or edit"
+                }
+              },
+              "required": [
+                "tool"
+              ],
+              "additionalProperties": true,
+              "description": "One change: tool plus that tool's arguments, without dryRun or applyToken."
+            },
+            "description": "The changes, applied in this order"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "ops"
+        ],
+        "type": "object"
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "ops": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tool",
+                "description"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    },
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "inTable": {
+                      "type": "boolean"
+                    },
+                    "hasImage": {
+                      "type": "boolean"
+                    },
+                    "hasTable": {
+                      "type": "boolean"
+                    },
+                    "hasInk": {
+                      "type": "boolean"
+                    },
+                    "list": {
+                      "type": "string"
+                    },
+                    "depth": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "quickStyle": {
+                      "type": "string"
+                    },
+                    "alignment": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "string",
+                      "description": "OneNote's cascaded text style for the paragraph, when it has one"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "objectID",
+                    "text",
+                    "inTitle",
+                    "inTable",
+                    "hasImage",
+                    "hasTable",
+                    "hasInk",
+                    "list",
+                    "depth",
+                    "outlineID",
+                    "quickStyle",
+                    "alignment"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "outlines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "z": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "inTitle": {
+                      "type": "boolean"
+                    },
+                    "lineCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "x",
+                    "y",
+                    "z",
+                    "width",
+                    "height",
+                    "inTitle",
+                    "lineCount"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string"
+                    },
+                    "alt": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "y": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    },
+                    "embedded": {
+                      "type": "boolean"
+                    },
+                    "callbackID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "format",
+                    "alt",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "outlineID",
+                    "embedded",
+                    "callbackID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectID": {
+                      "type": "string"
+                    },
+                    "rows": {
+                      "type": "number"
+                    },
+                    "columns": {
+                      "type": "number"
+                    },
+                    "outlineID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "objectID",
+                    "rows",
+                    "columns",
+                    "outlineID"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "rawXml": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "level",
+              "lang",
+              "created",
+              "lastModified",
+              "lines",
+              "outlines",
+              "images",
+              "tables"
+            ],
+            "additionalProperties": true
           }
         },
         "required": [

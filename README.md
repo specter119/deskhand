@@ -49,6 +49,7 @@ a client's default tool timeout (Pi: 60 s) and no client-side `timeout` setting 
 | `create_page`, `append_lines`, `insert_table`, `insert_image` | additive                                |
 | `edit`                                                     | rewrites paragraphs in place            |
 | `delete_page`                                              | moves a page to the notebook recycle bin |
+| `batch`                                                    | several of the above, one token          |
 
 A paragraph is a plain string, or an object with `text`, `depth`, `list`, `quickStyle`, `alignment`,
 `spaceBefore`, `spaceAfter` and `style` (`fontFamily`, `fontSize`, `color`, `bold`, `italic`,
@@ -67,6 +68,13 @@ with the same arguments plus `dryRun=false` and that token.
 - For `edit` and inserts into an existing outline it is also bound to the outline as previewed. If
   that outline changed in OneNote after the dry run, the apply fails with `changed_since_preview`.
 - `edit` never accepts raw OneNote XML, and `delete_page` needs the exact page name.
+
+`batch` takes a list of ops, each one of `append_lines`, `insert_table`, `insert_image` or `edit` with
+that tool's arguments, previews all of them and returns one token, then applies them in order. It is
+how several changes reach one confirmation. Two ops that rewrite the same outline are refused during
+the dry run, because the second fingerprint would be stale once the first is applied; several changes
+inside one outline belong in one `edit` call. `create_page` and `delete_page` are not batched. A batch
+is not a transaction: if a change fails, the error says what landed and what was not attempted.
 
 The token proves that a preview was produced, not that a person read it. If you want a person in the
 loop, have your client ask before any call with `dryRun=false`.

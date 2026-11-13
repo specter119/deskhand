@@ -1,4 +1,4 @@
-"""The ten OneNote tools."""
+"""The eleven OneNote tools."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from deskhand.core.compat import (
     truncate,
     utf16_slice,
 )
-from deskhand.core.powershell import BridgeFn
+from deskhand.core.powershell import BridgeError, BridgeFn
 from deskhand.core.server import ToolOutput, ToolSpec
 from deskhand.onenote.format import (
     describe_lines,
@@ -36,6 +36,7 @@ from deskhand.onenote.format import (
     normalize_page,
 )
 from deskhand.onenote.schemas import (
+    BATCH_RESULT,
     LINE,
     NOTEBOOK,
     PAGE,
@@ -48,6 +49,10 @@ from deskhand.onenote.schemas import (
 # Measured through the MCP server against a local notebook (incompressible PNG, dry run / apply):
 # 8 MB 0.5 s / 0.8 s, 16 MB 0.8 s / 1.5 s, 30 MB 1.5 s / 2.9 s. The cap leaves the apply far under the 40 s call timeout.
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
+MAX_BATCH_OPS = 20
+# create_page and delete_page are left out: each needs its own confirmation, and a page that does not
+# exist yet cannot be previewed together with the changes that follow it.
+BATCHABLE = ("append_lines", "insert_table", "insert_image", "edit")
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
 ADDITIVE = ToolAnnotations(
@@ -189,6 +194,106 @@ async def _run_write(deps: OneNoteDeps, plan: WritePlan, params: Params) -> Tool
 def _page_of(data: Params) -> Params:
     page = data.get("page")
     return page if isinstance(page, dict) else {}
+
+
+# --- batches -----------------------------------------------------------------
+# A batch previews several changes with one token and applies them in order. The fingerprint of an
+# outline rewrite covers the outline text that would be written, so two rewrites of one outline in a
+# batch would invalidate each other: the second apply would present a fingerprint the first one
+# changed. Those pairs are refused before a token is issued, while nothing has been written yet.
+
+
+def _rewritten_outlines(plan: WritePlan, data: Params) -> set[str]:
+    """The outlines whose text this op rewrites, as the bridge reported them.
+
+    Their fingerprints cover that text, so two ops rewriting one outline would invalidate each other.
+    An op that only adds a new outline has no such fingerprint and rewrites nothing.
+    """
+    if plan.op == "edit":
+        return {
+            as_string(change.get("outlineId"))
+            for change in as_array(data.get("changes"))
+            if as_string(change.get("outlineId"))
+        }
+    if plan.op in ("insert_table", "insert_image"):
+        outline = as_string(data.get("outlineId"))
+        return {outline} if outline else set()
+    return set()
+
+
+def _check_batch_scopes(scopes: list[set[str]]) -> None:
+    for first in range(len(scopes)):
+        for second in range(first + 1, len(scopes)):
+            shared = scopes[first] & scopes[second]
+            if shared:
+                raise ValueError(
+                    f"Changes {first + 1} and {second + 1} both rewrite outline {sorted(shared)[0]}, "
+                    "so the second fingerprint would be stale once the first is applied. Combine them "
+                    "into one edit call, or send them as two batches."
+                )
+
+
+def _numbered(index: int, text: str) -> str:
+    first, *rest = text.split("\n")
+    return "\n".join([f"{index}. {first}", *(f"   {line}" for line in rest)])
+
+
+def _batch_preview(previews: list[tuple[WritePlan, str]]) -> str:
+    lines = [f"{len(previews)} changes, applied in this order:"]
+    for index, (plan, described) in enumerate(previews, start=1):
+        lines.append(_numbered(index, plan.intent))
+        lines.extend(f"   {line}" if line else "" for line in described.split("\n"))
+    return "\n".join(lines)
+
+
+def _batch_stopped(index: int, total: int, applied: list[str], error: BridgeError) -> str:
+    """What landed when a batch stops: the caller must not assume the rest is untouched."""
+    # An unknown outcome must not be reported as "nothing was written": the failing change may have landed.
+    unknown = error.code == "outcome_unknown"
+    if applied:
+        outcome = "may or may not have been applied" if unknown else "failed"
+        lines = [f"Applied {len(applied)} of {total} changes, then change {index} {outcome}: {error}"]
+        lines.append("Applied:")
+        lines.extend(
+            f"  {line}"
+            for number, described in enumerate(applied, start=1)
+            for line in _numbered(number, described).split("\n")
+        )
+    else:
+        outcome = "may or may not have been applied" if unknown else "failed before anything was written"
+        lines = [f"Change 1 of {total} {outcome}: {error}"]
+    remaining = total - index
+    if remaining == 1:
+        lines.append(f"Change {total} was not attempted.")
+    elif remaining > 1:
+        lines.append(f"Changes {index + 1}-{total} were not attempted.")
+    lines.append("The applyToken is spent. Read the page again and preview the remaining changes.")
+    return "\n".join(lines)
+
+
+async def _batch_plans(
+    args: Params, builders: dict[str, Callable[[Params], Awaitable[WritePlan]]]
+) -> list[WritePlan]:
+    ops = as_array(args.get("ops"))
+    if not ops:
+        raise ValueError("batch needs at least one op")
+    if len(ops) > MAX_BATCH_OPS:
+        raise ValueError(f"batch takes at most {MAX_BATCH_OPS} ops, got {len(ops)}")
+    plans: list[WritePlan] = []
+    for index, op in enumerate(ops):
+        if not isinstance(op, dict):
+            raise ValueError(f"ops[{index}] must be an object carrying tool and that tool's arguments")
+        tool = op.get("tool")
+        if not isinstance(tool, str) or tool not in builders:
+            raise ValueError(
+                f"ops[{index}].tool must be one of {', '.join(BATCHABLE)}; create_page and delete_page "
+                "are not batched because they need their own confirmation"
+            )
+        for member in ("dryRun", "applyToken"):
+            if member in op:
+                raise ValueError(f"ops[{index}] must not carry {member}; it belongs to the batch call")
+        plans.append(await builders[tool]({key: value for key, value in op.items() if key != "tool"}))
+    return plans
 
 
 def _strings(value: Any) -> list[str]:
@@ -354,7 +459,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
         )
         return await _run_write(deps, plan, args)
 
-    async def append_lines(args: Params) -> ToolOutput:
+    async def plan_append_lines(args: Params) -> WritePlan:
         lines = _paragraphs(args.get("lines"))
         if not lines:
             raise ValueError("append_lines needs at least one line")
@@ -375,10 +480,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 f"The page currently has {paragraphs} paragraph(s) across {outlines} outline(s)."
             )
 
-        plan = WritePlan("append_lines", "append", {**target, "lines": lines}, intent, describe)
-        return await _run_write(deps, plan, args)
+        return WritePlan("append_lines", "append", {**target, "lines": lines}, intent, describe)
 
-    async def insert_table(args: Params) -> ToolOutput:
+    async def append_lines(args: Params) -> ToolOutput:
+        return await _run_write(deps, await plan_append_lines(args), args)
+
+    async def plan_insert_table(args: Params) -> WritePlan:
         headers = _strings(args.get("headers"))
         rows = [
             [cell if isinstance(cell, str) else _or(cell, "") for cell in as_array(row)]
@@ -411,7 +518,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 f"Would insert a {row_count}x{column_count} table. The page currently has {tables} table(s)."
             )
 
-        plan = WritePlan(
+        return WritePlan(
             "insert_table",
             "insert_table",
             {
@@ -427,10 +534,14 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             intent,
             describe,
         )
-        return await _run_write(deps, plan, args)
 
-    async def insert_image(args: Params) -> ToolOutput:
-        path: str = args["path"]
+    async def insert_table(args: Params) -> ToolOutput:
+        return await _run_write(deps, await plan_insert_table(args), args)
+
+    async def plan_insert_image(args: Params) -> WritePlan:
+        path = as_string(args.get("path"))
+        if not path:
+            raise ValueError("insert_image needs path, the image file to embed")
         try:
             size = os.stat(path).st_size
         except OSError as error:
@@ -465,7 +576,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 return f"Inserted the image. OneNote reports {len(images)} image(s), {embedded} with embedded bits."
             return f"Would insert one image. The page currently has {len(images)} image(s), {embedded} with embedded bits."
 
-        plan = WritePlan(
+        return WritePlan(
             "insert_image",
             "insert_image",
             {
@@ -481,19 +592,32 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             intent,
             describe,
         )
-        return await _run_write(deps, plan, args)
 
-    async def edit(args: Params) -> ToolOutput:
-        set_ = [{"objectID": item["objectID"], "text": item["text"]} for item in as_array(args.get("set"))]
+    async def insert_image(args: Params) -> ToolOutput:
+        return await _run_write(deps, await plan_insert_image(args), args)
+
+    async def plan_edit(args: Params) -> WritePlan:
+        set_ = []
+        for index, item in enumerate(as_array(args.get("set"))):
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("objectID"), str)
+                or not isinstance(item.get("text"), str)
+            ):
+                raise ValueError(f"set[{index}] needs objectID and text, both strings")
+            set_.append({"objectID": item["objectID"], "text": item["text"]})
         remove = _strings(args.get("remove"))
-        append = [
-            {
-                "objectID": item["objectID"],
-                "lines": _paragraphs(item.get("lines"), "append.lines"),
-                "after": item.get("after"),
-            }
-            for item in as_array(args.get("append"))
-        ]
+        append = []
+        for index, item in enumerate(as_array(args.get("append"))):
+            if not isinstance(item, dict) or not isinstance(item.get("objectID"), str):
+                raise ValueError(f"append[{index}] needs objectID, the id of the outline to add to")
+            append.append(
+                {
+                    "objectID": item["objectID"],
+                    "lines": _paragraphs(item.get("lines"), "append.lines"),
+                    "after": item.get("after"),
+                }
+            )
         if not set_ and not remove and not append:
             raise ValueError("edit needs at least one of set, remove or append")
         target = _pick_target(args)
@@ -526,10 +650,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             )
             return "\n\n".join(parts)
 
-        plan = WritePlan(
+        return WritePlan(
             "edit", "edit", {**target, "set": set_, "remove": remove, "append": append}, intent, describe
         )
-        return await _run_write(deps, plan, args)
+
+    async def edit(args: Params) -> ToolOutput:
+        return await _run_write(deps, await plan_edit(args), args)
 
     async def delete_page(args: Params) -> ToolOutput:
         target = _pick_target(args)
@@ -548,6 +674,81 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "delete_page", "delete_page", {**target, "expectName": args["expectName"]}, intent, describe
         )
         return await _run_write(deps, plan, args)
+
+    builders: dict[str, Callable[[Params], Awaitable[WritePlan]]] = {
+        "append_lines": plan_append_lines,
+        "insert_table": plan_insert_table,
+        "insert_image": plan_insert_image,
+        "edit": plan_edit,
+    }
+
+    async def batch(args: Params) -> ToolOutput:
+        plans = await _batch_plans(args, builders)
+        requests = [compact(plan.request) for plan in plans]
+
+        if args.get("dryRun") is not False:
+            previews: list[tuple[WritePlan, str]] = []
+            fingerprints: list[str] = []
+            scopes: list[set[str]] = []
+            for index, plan in enumerate(plans, start=1):
+                data = await _call(deps, plan.op, {**requests[index - 1], "apply": False})
+                fingerprint = as_string(data.get("fingerprint"))
+                if not fingerprint:
+                    raise RuntimeError(f"Change {index}: the OneNote bridge returned no fingerprint")
+                fingerprints.append(fingerprint)
+                scopes.append(_rewritten_outlines(plan, data))
+                previews.append((plan, plan.describe(data, False)))
+            _check_batch_scopes(scopes)
+            token = deps.tokens.issue("batch", {"ops": requests}, json.dumps(fingerprints))
+            preview = _batch_preview(previews)
+            return ToolOutput(
+                text="\n".join(
+                    [
+                        f"applyToken: {token}",
+                        "Dry run, nothing was written.",
+                        preview,
+                        "",
+                        "To apply, call batch again with the same arguments plus dryRun=false and "
+                        f'applyToken="{token}". The token is single use and expires in 10 minutes.',
+                    ]
+                ),
+                structured={
+                    "status": "dry-run",
+                    "applyToken": token,
+                    "preview": preview,
+                    "ops": [{"tool": plan.tool, "description": described} for plan, described in previews],
+                },
+            )
+
+        fingerprints = json.loads(deps.tokens.consume(args.get("applyToken"), "batch", {"ops": requests}))
+        applied: list[tuple[WritePlan, str]] = []
+        page: Params | None = None
+        for index, plan in enumerate(plans, start=1):
+            try:
+                data = await _call(
+                    deps,
+                    plan.op,
+                    {**requests[index - 1], "apply": True, "expectFingerprint": fingerprints[index - 1]},
+                )
+            except BridgeError as error:
+                raise RuntimeError(
+                    _batch_stopped(index, len(plans), [described for _, described in applied], error)
+                ) from error
+            applied.append((plan, plan.describe(data, True)))
+            if js_truthy(data.get("page")):
+                page = normalize_page(data["page"])
+        lines = [f"Applied {len(applied)} changes:" if len(applied) > 1 else "Applied the change:"]
+        lines.extend(_numbered(number, described) for number, (_, described) in enumerate(applied, start=1))
+        text = "\n".join(lines)
+        if page is not None:
+            text = f"{text}\n\n{format_page(page)}"
+        structured: Params = {
+            "status": "applied",
+            "ops": [{"tool": plan.tool, "description": described} for plan, described in applied],
+        }
+        if page is not None:
+            structured["page"] = page
+        return ToolOutput(truncate(text), structured)
 
     def spec(
         name: str,
@@ -792,5 +993,32 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             WRITE_RESULT,
             REWRITING,
             delete_page,
+        ),
+        spec(
+            "batch",
+            "Apply several OneNote changes",
+            "Apply several changes with one confirmation. Each op carries tool (append_lines, insert_table, "
+            "insert_image or edit) plus that tool's arguments. The dry run previews every change and returns "
+            "one applyToken; the apply runs them in order and stops at the first failure, reporting what "
+            "landed. Two ops must not rewrite the same outline, because the second fingerprint would be "
+            "stale once the first is applied: use one edit call for several changes inside an outline. "
+            "create_page and delete_page are not accepted because they need their own confirmation. "
+            f"{WRITE_FLOW}",
+            {
+                "ops": s.array(
+                    s.obj(
+                        {
+                            "tool": s.string("One of append_lines, insert_table, insert_image or edit"),
+                        },
+                        additional=True,
+                        description="One change: tool plus that tool's arguments, without dryRun or applyToken.",
+                    ),
+                    "The changes, applied in this order",
+                ),
+                **WRITE_PARAMS,
+            },
+            BATCH_RESULT,
+            REWRITING,
+            batch,
         ),
     ]

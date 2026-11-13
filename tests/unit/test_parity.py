@@ -5,7 +5,7 @@ tests/parity/fixtures/ts-transcripts.json was recorded from the TypeScript imple
 scenario here. Error texts are compared only by `isError`: their wording came from the TypeScript SDK.
 
 fixtures/tools.json is the advertised tool list. It matched the TypeScript record until paragraph
-formatting and the `after` anchor were added on purpose; regenerate it with
+formatting, the `after` anchor and `batch` were added on purpose; regenerate it with
 `uv run python tests/parity/dump_tools.py` whenever the contract is meant to change.
 """
 

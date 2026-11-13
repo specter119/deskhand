@@ -103,6 +103,17 @@ WRITE_RESULT = _loose(
     }
 )
 
+# A batch reports each change it previewed or applied, so a partial run can name what landed.
+BATCH_RESULT = _loose(
+    {
+        "status": union(literal("dry-run"), literal("applied")),
+        "applyToken": optional(string()),
+        "preview": optional(string()),
+        "ops": optional(array(_loose({"tool": string(), "description": string()}))),
+        "page": optional(PAGE),
+    }
+)
+
 # A paragraph is either a plain string or this object. Depth is the only way to express nesting, and
 # a caller that does not need formatting keeps writing plain strings.
 PARAGRAPH_STYLE = obj(
