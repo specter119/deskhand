@@ -18,7 +18,7 @@ application, a small shared core. Only `onenote` exists today.
   `test_parity.py` replays them; a wording change in a tool reply fails it on purpose. Regenerate the
   fixtures only when the contract is meant to change. `fixtures/tools.json` is the advertised tool
   list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
-  formatting and the `after` anchor were added on purpose.
+  formatting, the `after` anchor and `batch` were added on purpose.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
 - Branch `ts` holds the frozen TypeScript implementation, with its own tests.
 
@@ -26,8 +26,6 @@ application, a small shared core. Only `onenote` exists today.
 
 - Add a new application as `src/deskhand/<app>/` with its own server; do not widen `core` for one app.
   Promote code into `core` only when a second app needs it.
-- A write is never a single call: dry run first, apply with the token. Keep both layers described in
-  `src/deskhand/onenote/AGENTS.md`.
 - `bridge.ps1` is shipped as UTF-8 and sent to Windows PowerShell 5.1 as text, so it must parse there.
   Check it after editing, and run the live test. It runs inside a resident worker, so it must never `exit`.
 - Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` and `uv run pytest` before
@@ -38,3 +36,18 @@ application, a small shared core. Only `onenote` exists today.
   differ on `36.0`, rounding of halves and truthiness of `[]`, and clients saw the JavaScript results first.
 - Keep personal data out of the repository: no notebook names, account names, paths under a home
   directory or work-related identifiers in code, tests, docs or commit messages.
+
+## Stances
+
+The tradeoffs this project has already paid for are held as opposed stances, not as rules: each stance
+is an objective plus the harm it accepts, and each is paired with the objective that pays for it. The
+set, the oppositions and the open conflicts are in `.agents/skills/deskhand-stance-registry/SKILL.md`;
+the evidence behind each pair is in `docs/stance-map.md`.
+
+Run a stance review when a change moves a documented tradeoff — the write gate, the advertised
+contract, the preview text, the worker lifetime — and skip it for fixes that do not. The shape is
+fixed: one stance per reviewer, reviewers work independently and never read each other's output, and
+the orchestrator adjudicates and records the result in the registry. A conflict the user has not
+resolved is not averaged away.
+
+A stance is an objective; the mechanism it constrains stays in `src/deskhand/onenote/AGENTS.md`.
