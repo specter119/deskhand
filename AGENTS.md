@@ -20,6 +20,9 @@ application, a small shared core. Only `onenote` exists today.
   list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
   formatting, the `after` anchor and `batch` were added on purpose.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
+- `integrations/pi/`: the pi extension that asks before an apply runs. The root `package.json` makes
+  this repository installable as a pi package, so pi loads the extension from its clone of `master`;
+  a change to the gate takes effect after it is pushed, not after it is saved.
 - Branch `ts` holds the frozen TypeScript implementation, with its own tests.
 
 ## Rules
