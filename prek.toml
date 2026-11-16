@@ -32,7 +32,7 @@ priority = 2
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.17.4"
+rev = "v0.17.5"
 
 [[repos.hooks]]
 id = "ruff-check"
@@ -44,7 +44,7 @@ require_serial = true
 
 [[repos]]
 repo = "https://github.com/abravalheri/validate-pyproject"
-rev = "0.26"
+rev = "v0.27"
 
 [[repos.hooks]]
 id = "validate-pyproject"

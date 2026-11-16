@@ -108,7 +108,7 @@ def _removal_lines(remove: list[str]) -> list[str]:
     """A long delete list is a wall of objectIDs; a reader checks the texts, which the preview shows."""
     if len(remove) <= 3:
         return [f"  delete {object_id}" for object_id in remove]
-    return [f"  delete {len(remove)} paragraph(s)"]
+    return [f"  delete {len(remove)} item(s)"]
 
 
 def _placement(outline: Any, after: Any) -> str:
@@ -823,7 +823,8 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "read_page",
             "Read OneNote page",
             "Read one OneNote page: its paragraphs as text, each with the objectID needed to reference it in "
-            "edit, plus its outlines, tables and images. The reported lastModified is informational and must "
+            "edit, plus its outlines, tables and images. A table also reports the oeID that removes it. The "
+            "reported lastModified is informational and must "
             "not be used as a concurrency check.",
             {
                 **TARGET_PARAMS,
@@ -876,7 +877,8 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "Insert a table into a page: give headers and rows as arrays of cell text. Without outline it "
             "becomes a new outline at the end of the page; with outline it is appended inside that existing "
             "outline; with after it goes right after that paragraph instead. Cells are single paragraphs and "
-            f"cannot contain nested tables. {WRITE_FLOW}",
+            "cannot contain nested tables. As a new outline the table is that outline's only child, so edit "
+            f"cannot remove it until the outline also holds a paragraph. {WRITE_FLOW}",
             {
                 **TARGET_PARAMS,
                 "headers": s.optional(s.array(s.string("One header cell"), "Optional header row")),
@@ -935,6 +937,7 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
             "Change paragraphs inside existing outlines of a page: replace their text with set, delete them "
             "with remove, or add paragraphs to an outline with append, optionally after a given paragraph. "
             "Paragraph objectIDs come from read_page, and outline objectIDs may be used as an append target. "
+            "A table is removed by the oeID read_page reports for it; the table's own objectID is refused. "
             "OneNote replaces an outline "
             "with exactly what the caller sends, so this tool resends each affected outline in full, echoing "
             "back OneNote's own XML for everything it is not changing - that is why paragraph XML is never "
@@ -954,7 +957,12 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                     )
                 ),
                 "remove": s.optional(
-                    s.array(s.string("objectID of a paragraph to delete"), "Paragraphs to delete")
+                    s.array(
+                        s.string(
+                            "objectID of a paragraph to delete, or of the one:OE that holds a table (its oeID)"
+                        ),
+                        "Paragraphs to delete; a table is removed by the oeID read_page reports for it",
+                    )
                 ),
                 "append": s.optional(
                     s.array(

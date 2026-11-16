@@ -74,7 +74,16 @@ _PAGE_IMAGE = _loose(
         "callbackID": string(),
     }
 )
-_PAGE_TABLE = _loose({"objectID": string(), "rows": number(), "columns": number(), "outlineID": string()})
+_PAGE_TABLE = _loose(
+    {
+        "objectID": string(),
+        # Newer than the recorded TypeScript transcripts, so a client may not see it.
+        "oeID": optional(string()),
+        "rows": number(),
+        "columns": number(),
+        "outlineID": string(),
+    }
+)
 
 PAGE = _loose(
     {

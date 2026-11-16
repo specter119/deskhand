@@ -65,6 +65,7 @@ Designs that served both sides of a pair. Recorded so the next pass does not rel
 | integrity vs legibility | caps were added without changing short replies, so parity survived the fix  | both   | `1da5f3f` ("A short edit prints exactly what it printed before") |
 | legibility vs continuity | reorder the reply first, then pin it: the guidance moves ahead of the diagnostic, the diagnostic is capped, and only then does the contract stance freeze the resulting text | both | pass 1, findings F3/F4 |
 | integrity vs continuity | a tightened classification changes error codes and text, so the contract stance pins the new behaviour after the fix, not before it | both | pass 1, findings F1/F2/F3 |
+| integrity vs legibility (table removal) | the label leads with the removable `oe=` id, then the table id and size, then a first-cell excerpt collapsed to one line and capped at 40 characters | both | pass 2, P2's objection to W2 |
 
 ## Open essential conflicts
 
@@ -97,11 +98,22 @@ It also added one opposition to the map. The control the set was installed again
 an exception around a write used to mean the write was refused — was caught by F1 and F2, both from
 `deskhand-write-integrity-stance`.
 
+Pass 2 binding (2026-11-16). Target: the uncommitted jj change `fc1ac784` (parent `1a6c178a`), which
+lets `edit` remove a table by the `one:OE` that holds it. Scope: `src/deskhand/onenote/bridge.ps1`,
+`schemas.py`, `tools.py`, `AGENTS.md`; `tests/unit/test_bridge_behaviour.py`,
+`tests/unit/test_onenote.py`; `tests/parity/fixtures/tools.json`. Pairs in scope: write-integrity vs
+preview-legibility, contract-continuity vs edit-expressiveness, preview-legibility vs
+contract-continuity. Prior decisions constraining the pass: `7255575` (the contract stance was
+sacrificed so a real page could be matched), pass 1's ordering (change the text deliberately, then pin
+it), and the one-screen preview cap from `1da5f3f`. Reviewers: one per stance, independent, no shared
+output: write-integrity, preview-legibility, contract-continuity, edit-expressiveness.
+
 ## Passes
 
 | Pass | Target | Pairs reviewed | Outcome |
 | ---- | ------ | -------------- | ------- |
 | 1    | `09464eb` | integrity vs legibility, continuity vs expressiveness, and a map miss (legibility vs continuity) | 4 findings, all merged by sequencing; no escalation |
+| 2    | `fc1ac784` | integrity vs legibility, continuity vs expressiveness, legibility vs continuity | 18 findings; 11 fixed, 3 accepted mechanism decisions, 4 deferred axes; no escalation |
 
 Pass 1 detail. Four independent reviewers, one stance each, no shared output. Findings:
 
@@ -140,6 +152,62 @@ PowerShell's `Exception calling ...` wrapper. F3 is resolved by pinning the exac
 that fixture's error wording comes from the TypeScript SDK, and `test_parity.py` compares errors only
 by `isError` on purpose. The pin was verified by mutating one word of a message and watching the test
 fail, then reverting.
+
+Pass 2 detail. Four independent reviewers, one stance each, no shared output. Findings:
+
+- P1 `preview-legibility`, seen before: `read_page`'s text reply printed the table's own `objectID` but
+  not `tables[].oeID`, so a text-only client was pointed at the id `edit` refuses.
+- P2 `preview-legibility`, seen before: every removed table or image previewed as `[table]`/`[image]`,
+  and a long removal list said `delete N paragraph(s)` although tables are not paragraphs.
+- W1 `write-integrity`, seen before: the plan fingerprint covers the rewritten outline, not the
+  removed child, so a table edited between preview and apply is deleted. This is the documented
+  mechanism decision in `src/deskhand/onenote/AGENTS.md#concurrency`.
+- W2 `write-integrity`, seen before: the destructive preview showed no identity or content for a table.
+- W3 `write-integrity`, new: no read-back comparison follows an apply; `applied` reports that the
+  write call returned, as documented.
+- W4 `write-integrity`, seen before: `batch` can mix a destructive `edit` with additive operations.
+- W5 `write-integrity`, new: a non-text child other than table/image (an ink OE) previewed as an empty
+  string.
+- C1 `contract-continuity`, seen before: the schema and fixture changed on purpose, but the root
+  ledger and the change description did not say so.
+- C2 `contract-continuity`, seen before: the "outline would be empty" refusal called every case a
+  table and was not pinned verbatim.
+- C3 `contract-continuity`, seen before: the nested-removal refusal called a paragraph a table and was
+  pinned only by a substring.
+- C4 `contract-continuity`, seen before: `[image]` had no pin.
+- C5 `contract-continuity`, new: no bridge test read a table page, so the `oeID` key could drift.
+- C6 `contract-continuity`, new: the `remove` description pointed at `read_page` while the text reply
+  omitted the id.
+- E1 `edit-expressiveness`, new: a table inserted as a new outline cannot be removed, because it is
+  that outline's only child.
+- E2 `edit-expressiveness`, new: `oeID` is optional in the schema, so a client validating the older
+  contract does not see the only removal handle.
+- E3 `edit-expressiveness`, new: paragraphs inside table cells can be read and appended to but not
+  set or removed.
+- E4 `edit-expressiveness`, seen before: the tool descriptions did not mention table removal or the
+  new-outline caveat.
+- E5 `edit-expressiveness`, new: a table cannot be replaced by a paragraph at the same position in one
+  call.
+
+Contest and classification. P2 contests W2 over the excerpt: W2 wanted first-cell content in a
+destructive preview, P2 wanted one line. P2's objection held that the table's own `objectID` is not
+the removable id and that an unbounded excerpt can span lines; the merged label is
+`[table oe=<oe id> <table id> <rows>x<columns> "<first cell>"]`, with whitespace collapsed and 40
+characters capped. C1-C6, P1, P2, W2, W5 and E4 are fixed in the same change. W1, W3 and W4 are
+pre-existing mechanism decisions recorded in `src/deskhand/onenote/AGENTS.md` (the fingerprint covers
+the written outline; `applied` means the write call returned; `batch` takes `edit`), unchanged here.
+E1 and E3 are the deferred axes already listed under "Not implemented" (deleting a whole outline,
+editing inside table cells); E1 is now stated in the `insert_table` description. E2 is not adopted:
+deriving the OE from the table's own `objectID` would accept an id the contract says is refused, and
+the text reply now carries `oe=` so the handle is discoverable. E5 predates the change and needs an
+insert-at-the-removed-position edit, which this pass does not add. Nothing was incompatible within
+the target's scope, so nothing was escalated.
+
+Counterexamples harvested. W5's empty label survived the first implementation (`[table]`/`[image]`
+only), and the `oeID` field survived as the only removal handle until C6 and P1 compared the text and
+structured channels. W1, W3 and W4 are `seen before` findings that the mechanism docs already accept,
+so they show the pass can restate a known limit, not that it found a new one. P2's objection is the
+one that changed the implementation: it rejected a label built on the table's own id.
 
 ## Operational notes
 

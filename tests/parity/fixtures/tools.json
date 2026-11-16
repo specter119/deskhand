@@ -215,7 +215,7 @@
     {
       "name": "read_page",
       "title": "Read OneNote page",
-      "description": "Read one OneNote page: its paragraphs as text, each with the objectID needed to reference it in edit, plus its outlines, tables and images. The reported lastModified is informational and must not be used as a concurrency check.",
+      "description": "Read one OneNote page: its paragraphs as text, each with the objectID needed to reference it in edit, plus its outlines, tables and images. A table also reports the oeID that removes it. The reported lastModified is informational and must not be used as a concurrency check.",
       "inputSchema": {
         "properties": {
           "pageId": {
@@ -494,6 +494,9 @@
                   "type": "object",
                   "properties": {
                     "objectID": {
+                      "type": "string"
+                    },
+                    "oeID": {
                       "type": "string"
                     },
                     "rows": {
@@ -971,6 +974,9 @@
                   "type": "object",
                   "properties": {
                     "objectID": {
+                      "type": "string"
+                    },
+                    "oeID": {
                       "type": "string"
                     },
                     "rows": {
@@ -1455,6 +1461,9 @@
                     "objectID": {
                       "type": "string"
                     },
+                    "oeID": {
+                      "type": "string"
+                    },
                     "rows": {
                       "type": "number"
                     },
@@ -1513,7 +1522,7 @@
     {
       "name": "insert_table",
       "title": "Insert OneNote table",
-      "description": "Insert a table into a page: give headers and rows as arrays of cell text. Without outline it becomes a new outline at the end of the page; with outline it is appended inside that existing outline; with after it goes right after that paragraph instead. Cells are single paragraphs and cannot contain nested tables. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "description": "Insert a table into a page: give headers and rows as arrays of cell text. Without outline it becomes a new outline at the end of the page; with outline it is appended inside that existing outline; with after it goes right after that paragraph instead. Cells are single paragraphs and cannot contain nested tables. As a new outline the table is that outline's only child, so edit cannot remove it until the outline also holds a paragraph. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
       "inputSchema": {
         "properties": {
           "pageId": {
@@ -1860,6 +1869,9 @@
                   "type": "object",
                   "properties": {
                     "objectID": {
+                      "type": "string"
+                    },
+                    "oeID": {
                       "type": "string"
                     },
                     "rows": {
@@ -2254,6 +2266,9 @@
                     "objectID": {
                       "type": "string"
                     },
+                    "oeID": {
+                      "type": "string"
+                    },
                     "rows": {
                       "type": "number"
                     },
@@ -2312,7 +2327,7 @@
     {
       "name": "edit",
       "title": "Edit OneNote page text",
-      "description": "Change paragraphs inside existing outlines of a page: replace their text with set, delete them with remove, or add paragraphs to an outline with append, optionally after a given paragraph. Paragraph objectIDs come from read_page, and outline objectIDs may be used as an append target. OneNote replaces an outline with exactly what the caller sends, so this tool resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing - that is why paragraph XML is never accepted from callers. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
+      "description": "Change paragraphs inside existing outlines of a page: replace their text with set, delete them with remove, or add paragraphs to an outline with append, optionally after a given paragraph. Paragraph objectIDs come from read_page, and outline objectIDs may be used as an append target. A table is removed by the oeID read_page reports for it; the table's own objectID is refused. OneNote replaces an outline with exactly what the caller sends, so this tool resends each affected outline in full, echoing back OneNote's own XML for everything it is not changing - that is why paragraph XML is never accepted from callers. Two steps: call it without dryRun first (nothing is written; the reply starts with a line 'applyToken: <token>' and shows the exact change), then call it again with the same arguments plus dryRun=false and that applyToken. A token is single use, expires after 10 minutes, and is refused if the arguments differ or the target changed in OneNote after the dry run.",
       "inputSchema": {
         "properties": {
           "pageId": {
@@ -2357,9 +2372,9 @@
             "type": "array",
             "items": {
               "type": "string",
-              "description": "objectID of a paragraph to delete"
+              "description": "objectID of a paragraph to delete, or of the one:OE that holds a table (its oeID)"
             },
-            "description": "Paragraphs to delete"
+            "description": "Paragraphs to delete; a table is removed by the oeID read_page reports for it"
           },
           "append": {
             "type": "array",
@@ -2785,6 +2800,9 @@
                     "objectID": {
                       "type": "string"
                     },
+                    "oeID": {
+                      "type": "string"
+                    },
                     "rows": {
                       "type": "number"
                     },
@@ -3151,6 +3169,9 @@
                   "type": "object",
                   "properties": {
                     "objectID": {
+                      "type": "string"
+                    },
+                    "oeID": {
                       "type": "string"
                     },
                     "rows": {
@@ -3536,6 +3557,9 @@
                   "type": "object",
                   "properties": {
                     "objectID": {
+                      "type": "string"
+                    },
+                    "oeID": {
                       "type": "string"
                     },
                     "rows": {

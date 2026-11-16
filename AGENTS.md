@@ -18,7 +18,8 @@ application, a small shared core. Only `onenote` exists today.
   `test_parity.py` replays them; a wording change in a tool reply fails it on purpose. Regenerate the
   fixtures only when the contract is meant to change. `fixtures/tools.json` is the advertised tool
   list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
-  formatting, the `after` anchor and `batch` were added on purpose.
+  formatting, the `after` anchor, `batch`, and removing a table by its `one:OE` id were added on
+  purpose.
 - `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
 - `integrations/pi/`: the pi extension that asks before an apply runs. The root `package.json` makes
   this repository installable as a pi package, so pi loads the extension from its clone of `master`;

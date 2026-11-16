@@ -152,6 +152,53 @@ function Get-OeText($oeNode) {
 	return ($parts -join "`n")
 }
 
+# A table or an image holds no text, so a preview that only shows text would print an empty string.
+# The label names the object so several removed tables or images stay apart: the removable `oe=` id
+# first, then the table's own id, its size, and a one-line first-cell excerpt when there is text.
+function Get-OeLabel($oeNode) {
+	$text = Get-OeText $oeNode
+	if (-not [string]::IsNullOrEmpty($text)) { return $text }
+	$table = $oeNode.SelectSingleNode('*[local-name()="Table"]')
+	if ($null -ne $table) {
+		$rows = $table.SelectNodes('*[local-name()="Row"]').Count
+		$cells = $table.SelectNodes('*[local-name()="Row"][1]/*[local-name()="Cell"]').Count
+		$label = '[table'
+		$oeId = $oeNode.GetAttribute('objectID')
+		if ($oeId) { $label += ' oe=' + $oeId }
+		$tableId = $table.GetAttribute('objectID')
+		if ($tableId) { $label += ' ' + $tableId }
+		$label += ' ' + [string]$rows + 'x' + [string]$cells
+		$firstCell = $table.SelectSingleNode('*[local-name()="Row"][1]/*[local-name()="Cell"][1]')
+		$excerpt = Get-CellExcerpt $firstCell
+		if ($excerpt) { $label += ' "' + $excerpt + '"' }
+		return $label + ']'
+	}
+	$image = $oeNode.SelectSingleNode('*[local-name()="Image"]')
+	if ($null -ne $image) {
+		$label = '[image'
+		$oeId = $oeNode.GetAttribute('objectID')
+		if ($oeId) { $label += ' oe=' + $oeId }
+		$imageId = $image.GetAttribute('objectID')
+		if ($imageId) { $label += ' ' + $imageId }
+		return $label + ']'
+	}
+	$oeId = $oeNode.GetAttribute('objectID')
+	if ($oeId) { return '[object oe=' + $oeId + ']' }
+	return '[object]'
+}
+
+# One removal stays one preview line: collapse every run of whitespace, then cap the first cell.
+function Get-CellExcerpt($cell) {
+	if ($null -eq $cell) { return '' }
+	$parts = New-Object System.Collections.ArrayList
+	foreach ($t in $cell.SelectNodes('.//*[local-name()="T"]')) {
+		[void]$parts.Add((Get-RichText (Get-TRaw $t)))
+	}
+	$text = (($parts -join ' ') -replace '\s+', ' ').Trim()
+	if ($text.Length -gt 40) { $text = $text.Substring(0, 40) + '...' }
+	return $text
+}
+
 # --- xml helpers ------------------------------------------------------------
 
 function Get-AncestorNames($node) {
@@ -268,8 +315,11 @@ function Get-PageModel($pageNode) {
 	$tables = New-Object System.Collections.ArrayList
 	foreach ($tbl in $pageNode.SelectNodes('.//*[local-name()="Table"]')) {
 		$tblOutline = Get-NearestAncestor $tbl 'Outline'
+		$tblOe = Get-NearestAncestor $tbl 'OE'
 		[void]$tables.Add(@{
 				objectID  = $tbl.GetAttribute('objectID')
+				# The OE that holds the table: edit remove takes this id, not the table's own.
+				oeID      = $(if ($null -ne $tblOe) { $tblOe.GetAttribute('objectID') } else { '' })
 				rows      = $tbl.SelectNodes('*[local-name()="Row"]').Count
 				columns   = $tbl.SelectNodes('*[local-name()="Row"][1]/*[local-name()="Cell"]').Count
 				outlineID = $(if ($null -ne $tblOutline) { $tblOutline.GetAttribute('objectID') } else { '' })
@@ -896,20 +946,26 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 		$changed = New-Object System.Collections.ArrayList
 		$removed = New-Object System.Collections.ArrayList
 		$after = New-Object System.Collections.ArrayList
+		$seenSet = @{}
+		$seenRemove = @{}
 
 		foreach ($child in $children.ChildNodes) {
 			if ($child.NodeType -ne 'Element') { continue }
 			$childId = $child.GetAttribute('objectID')
 			$before = ''
-			if ($child.LocalName -eq 'OE') { $before = Get-OeText $child } else { $before = '[' + $child.LocalName.ToLowerInvariant() + ']' }
+			if ($child.LocalName -eq 'OE') { $before = Get-OeLabel $child } else { $before = '[' + $child.LocalName.ToLowerInvariant() + ']' }
 
 			if (-not [string]::IsNullOrEmpty($childId) -and $removeMap.ContainsKey($childId)) {
+				$seenRemove[$childId] = $true
 				[void]$removed.Add(@{ objectID = $childId; text = $before })
 				continue
 			}
 
 			$newText = $null
-			if (-not [string]::IsNullOrEmpty($childId) -and $setMap.ContainsKey($childId)) { $newText = [string]$setMap[$childId] }
+			if (-not [string]::IsNullOrEmpty($childId) -and $setMap.ContainsKey($childId)) {
+				$newText = [string]$setMap[$childId]
+				$seenSet[$childId] = $true
+			}
 			$xml = Get-ChildXml $child $newText
 			if ($null -eq $xml) {
 				Fail ('paragraph ' + $childId + ' has no one:T element, so its text cannot be replaced') 'unsupported'
@@ -920,6 +976,19 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 				[void]$after.Add($newText)
 			}
 			else { [void]$after.Add($before) }
+		}
+
+		# Only the outline's top-level children are rebuilt, so an id deeper in the tree would be ignored
+		# silently. Say so instead of reporting a change that did not happen.
+		foreach ($id in $removeMap.Keys) {
+			if (-not $seenRemove.ContainsKey($id)) {
+				Fail ('cannot remove ' + $id + ': it is not a top-level child of outline ' + $outlineId + '. A paragraph or table inside a table cell cannot be removed yet.') 'unsupported'
+			}
+		}
+		foreach ($id in $setMap.Keys) {
+			if (-not $seenSet.ContainsKey($id)) {
+				Fail ('cannot replace ' + $id + ': it is not a top-level child of outline ' + $outlineId + '. A paragraph inside a table cell cannot be edited yet.') 'unsupported'
+			}
 		}
 
 		foreach ($entry in $plan[$outlineId].append) {
@@ -961,7 +1030,7 @@ function New-EditPlan($pageNode, $req, [bool]$allowRawXml = $false) {
 		}
 
 		if ($parts.Count -eq 0) {
-			Fail ('refusing to leave outline ' + $outlineId + ' empty: OneNote rejects an empty OEChildren, so remove some paragraphs instead of all of them') 'unsupported'
+			Fail ('refusing to leave outline ' + $outlineId + ' empty: OneNote rejects an empty OEChildren, so keep at least one paragraph in it. Removing the last child of an outline is not supported; add a paragraph to that outline first.') 'unsupported'
 		}
 
 		[void]$inner.Append('<one:Outline objectID="' + $outlineId + '"><one:OEChildren>' + ($parts -join '') + '</one:OEChildren></one:Outline>')

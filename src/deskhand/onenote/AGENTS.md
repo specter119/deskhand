@@ -244,6 +244,19 @@ XML (`OuterXml`) for every paragraph it is not changing — so styles, lists, ta
 survive — and substitutes only the `<one:T>` of the paragraphs being edited. Paragraph XML must
 never be hand-built by a caller.
 
+A table is removed the same way: the `one:OE` that holds it is a child of the outline, so `edit`'s
+`remove` takes that OE's id, which `read_page` reports as `tables[].oeID` (the table's own `objectID`
+is not an OE and is refused as `not_found`). The text reply repeats the id on the table line as
+`oe=<id>`, because a client that reads only the reply text never sees `structuredContent`. A removal
+preview labels an object it cannot quote: a table becomes `[table oe=<oe id> <table id>
+<rows>x<columns> "<first cell>"]`, an image `[image oe=<oe id> <image id>]`, so several removals stay
+distinguishable on one line. Only the outline's **top-level** children are rebuilt, so
+a paragraph or table inside a table cell cannot be edited yet: `edit` refuses such an id with
+`unsupported` instead of resending the outline unchanged and reporting a change that did not happen.
+A table that is the only child of its outline cannot be removed either, because OneNote rejects an
+empty `one:OEChildren`; `insert_table` as a new outline produces exactly that shape, so a table meant
+to be deletable later has to go into an outline that keeps a paragraph.
+
 ### Paragraph formatting and the `after` anchor
 
 New content is described by the caller as a flat list with a `depth` per paragraph; the bridge expands

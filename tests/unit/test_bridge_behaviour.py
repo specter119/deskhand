@@ -48,6 +48,7 @@ function New-Fake($b) {
 	}
 	Add-Member -InputObject $o -MemberType ScriptMethod -Name GetPageContent -Value {
 		if ($this.B.Read) { & $this.B.Read $this }
+		if ($this.B.Page) { $args[1].Value = (& $this.B.Page); return }
 		$args[1].Value = ('<one:Page ' + $X + ' ID="' + $args[0] + '" name="Probe page" lastModifiedTime="2026-01-01T00:00:00.000Z"><one:Title><one:OE><one:T><![CDATA[Probe page]]></one:T></one:OE></one:Title></one:Page>')
 	}
 	Add-Member -InputObject $o -MemberType ScriptMethod -Name UpdatePageContent -Value {
@@ -86,7 +87,8 @@ function Run($name, $req, $app, $factory, $fakes) {
 	foreach ($f in $fakes) { $calls += @($f.Calls) }
 	[void]$results.Add([pscustomobject]@{
 			name = $name; ok = $resp.ok; code = $resp.code; error = $resp.error
-			calls = @($calls); probes = $fakes[0].Probes; newCalls = $script:NewCalls
+			calls = @($calls); probes = $fakes[0].Probes; newCalls = $script:NewCalls; changes = @($resp.data.changes)
+			data = $resp.data
 			kept = ($null -ne $app -and [object]::ReferenceEquals($script:OneNoteApp, $app))
 		})
 }
@@ -95,6 +97,30 @@ function Append-Req { @{ op = 'append'; pageId = 'P1'; lines = @('hello'); apply
 function Delete-Req { @{ op = 'delete_page'; pageId = 'P1'; expectName = 'Probe page'; apply = $true; expectFingerprint = (Get-Sha256Hex 'delete:P1|Probe page') } }
 function Create-Req { @{ op = 'create_page'; sectionId = 'S1'; title = 'T'; lines = @('x'); apply = $true; expectFingerprint = (Get-Sha256Hex 'create:S1') } }
 function Read-Req { @{ op = 'read_page'; pageId = 'P1' } }
+function Edit-Req($remove) { @{ op = 'edit'; pageId = 'P1'; remove = @($remove); apply = $false } }
+$script:TablePage = ('<one:Page ' + $X + ' ID="P1" name="Probe page" lastModifiedTime="2026-01-01T00:00:00.000Z">' +
+	'<one:Outline objectID="OL1"><one:OEChildren>' +
+	'<one:OE objectID="OE1"><one:T><![CDATA[before]]></one:T></one:OE>' +
+	'<one:OE objectID="OE2"><one:Table objectID="T1"><one:Row><one:Cell><one:OEChildren>' +
+	'<one:OE objectID="CELL1"><one:T><![CDATA[cell]]></one:T></one:OE>' +
+	'</one:OEChildren></one:Cell></one:Row></one:Table></one:OE>' +
+	'</one:OEChildren></one:Outline></one:Page>')
+$script:ImagePage = ('<one:Page ' + $X + ' ID="P1" name="Probe page" lastModifiedTime="2026-01-01T00:00:00.000Z">' +
+	'<one:Outline objectID="OL1"><one:OEChildren>' +
+	'<one:OE objectID="OE1"><one:T><![CDATA[before]]></one:T></one:OE>' +
+	'<one:OE objectID="OE2"><one:Image objectID="IMG1" format="png"><one:Data>AAAA</one:Data></one:Image></one:OE>' +
+	'</one:OEChildren></one:Outline></one:Page>')
+$script:TableOnlyPage = ('<one:Page ' + $X + ' ID="P1" name="Probe page" lastModifiedTime="2026-01-01T00:00:00.000Z">' +
+	'<one:Outline objectID="OL1"><one:OEChildren>' +
+	'<one:OE objectID="OE2"><one:Table objectID="T1"><one:Row><one:Cell><one:OEChildren>' +
+	'<one:OE objectID="CELL1"><one:T><![CDATA[cell]]></one:T></one:OE>' +
+	'</one:OEChildren></one:Cell></one:Row></one:Table></one:OE>' +
+	'</one:OEChildren></one:Outline></one:Page>')
+$script:InkPage = ('<one:Page ' + $X + ' ID="P1" name="Probe page" lastModifiedTime="2026-01-01T00:00:00.000Z">' +
+	'<one:Outline objectID="OL1"><one:OEChildren>' +
+	'<one:OE objectID="OE1"><one:T><![CDATA[before]]></one:T></one:OE>' +
+	'<one:OE objectID="OE2"><one:InkDrawing><one:InkWord/></one:InkDrawing></one:OE>' +
+	'</one:OEChildren></one:Outline></one:Page>')
 function Case($name, $req, $behaviour) {
 	$f = New-Fake $behaviour
 	Run $name $req $f $null @($f)
@@ -120,6 +146,14 @@ try {
 	Case 'create_refused' (Create-Req) @{ Create = { throw (Com '0x80042001') } }
 	Case 'create_gone' (Create-Req) @{ Create = { throw (Com '0x800706BA') } }
 	Case 'create_title_fails' (Create-Req) @{ Update = { throw (Com '0x80042001') } }
+
+	Case 'edit_remove_table' (Edit-Req 'OE2') @{ Page = { $script:TablePage } }
+	Case 'edit_remove_image' (Edit-Req 'OE2') @{ Page = { $script:ImagePage } }
+	Case 'edit_remove_last' (Edit-Req 'OE2') @{ Page = { $script:TableOnlyPage } }
+	Case 'edit_remove_ink' (Edit-Req 'OE2') @{ Page = { $script:InkPage } }
+	Case 'edit_remove_nested' (Edit-Req 'CELL1') @{ Page = { $script:TablePage } }
+	Case 'edit_set_nested' (@{ op = 'edit'; pageId = 'P1'; set = @(@{ objectID = 'CELL1'; text = 'x' }); apply = $false }) @{ Page = { $script:TablePage } }
+	Case 'read_page_table' (Read-Req) @{ Page = { $script:TablePage } }
 
 	Case 'probe_busy_then_ok' (Read-Req) @{ Probe = { param($f) if ($f.Probes -le 2) { throw (Com '0x80010001') } } }
 	Case 'probe_always_busy' (Read-Req) @{ Probe = { throw (Com '0x8001010A') } }
@@ -227,6 +261,57 @@ def test_the_error_text_of_each_classification_is_pinned(outcomes):
         "Read the page again and preview before retrying: whether OneNote managed to update the page "
         "is unknown (0x800706BA): fake 0x800706BA"
     )
+
+
+def test_a_table_is_removed_by_the_oe_that_holds_it(outcomes):
+    outcome = outcomes["edit_remove_table"]
+    assert outcome["ok"] is True, outcome
+    assert outcome["calls"] == [], outcome
+    removed = outcome["changes"][0]["removed"]
+    assert [item["text"] for item in removed] == ['[table oe=OE2 T1 1x1 "cell"]'], outcome
+
+
+def test_an_image_is_removed_by_the_oe_that_holds_it(outcomes):
+    outcome = outcomes["edit_remove_image"]
+    assert outcome["ok"] is True, outcome
+    assert [item["text"] for item in outcome["changes"][0]["removed"]] == ["[image oe=OE2 IMG1]"], outcome
+
+
+def test_an_unrecognised_non_text_child_is_still_named_by_its_oe(outcomes):
+    outcome = outcomes["edit_remove_ink"]
+    assert outcome["ok"] is True, outcome
+    assert [item["text"] for item in outcome["changes"][0]["removed"]] == ["[object oe=OE2]"], outcome
+
+
+def test_removing_an_outlines_last_child_is_refused_with_the_reason(outcomes):
+    outcome = outcomes["edit_remove_last"]
+    assert outcome["ok"] is False, outcome
+    assert outcome["code"] == "unsupported", outcome
+    assert outcome["error"] == (
+        "refusing to leave outline OL1 empty: OneNote rejects an empty OEChildren, so keep at least one "
+        "paragraph in it. Removing the last child of an outline is not supported; add a paragraph to "
+        "that outline first."
+    ), outcome
+
+
+def test_read_page_reports_the_oe_that_holds_a_table_through_the_bridge(outcomes):
+    tables = outcomes["read_page_table"]["data"]["page"]["tables"]
+    assert tables == [{"objectID": "T1", "oeID": "OE2", "rows": 1, "columns": 1, "outlineID": "OL1"}], tables
+
+
+def test_a_paragraph_inside_a_table_cell_is_refused_instead_of_silently_kept(outcomes):
+    # Only the outline's top-level children are rebuilt, so a nested id would be ignored without this.
+    expected = {
+        "edit_remove_nested": "cannot remove CELL1: it is not a top-level child of outline OL1. "
+        "A paragraph or table inside a table cell cannot be removed yet.",
+        "edit_set_nested": "cannot replace CELL1: it is not a top-level child of outline OL1. "
+        "A paragraph inside a table cell cannot be edited yet.",
+    }
+    for name, message in expected.items():
+        outcome = outcomes[name]
+        assert outcome["ok"] is False, outcome
+        assert outcome["code"] == "unsupported", outcome
+        assert outcome["error"] == message, outcome
 
 
 def test_an_unrecognised_code_in_the_onenote_range_is_not_called_refused(outcomes):

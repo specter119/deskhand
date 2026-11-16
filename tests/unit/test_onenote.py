@@ -1,3 +1,4 @@
+import copy
 import re
 
 import pytest
@@ -94,6 +95,17 @@ async def test_read_tools_validate_against_their_output_schemas_including_powers
         page = (await t.call("read_page", {"pageId": "p1"})).structured_content["page"]
         assert isinstance(page["lines"], list) and isinstance(page["outlines"], list)
         assert not any("apply" in call["args"] for call in bridge.calls)
+
+
+async def test_read_page_reports_the_oe_that_holds_a_table_so_edit_can_remove_it():
+    page = copy.deepcopy(PAGE)
+    page["tables"] = [{"objectID": "tbl-1", "oeID": "oe-tbl", "rows": 2, "columns": 2, "outlineID": "ol-1"}]
+    bridge = FakeBridge({"read_page": lambda args: {"page": page}})
+    async with connect(bridge) as t:
+        result = await t.call("read_page", {"pageId": "p1"})
+        assert not result.is_error, text_of(result)
+        assert result.structured_content["page"]["tables"] == page["tables"]
+        assert "table tbl-1: 2x2 cells, in outline ol-1, oe=oe-tbl" in text_of(result)
 
 
 async def test_a_dry_run_puts_the_token_on_the_first_line_and_never_applies():
@@ -322,7 +334,7 @@ async def test_a_section_rewrite_previews_a_summary_instead_of_every_object_id()
             },
         )
         text = text_of(result)
-        assert "  delete 37 paragraph(s)" in text, text
+        assert "  delete 37 item(s)" in text, text
         assert "oe-36" not in text, "objectIDs are noise in a long delete list"
         assert '  - delete "old paragraph 0"' in text, text
         assert "  … and 32 more deleted" in text, text

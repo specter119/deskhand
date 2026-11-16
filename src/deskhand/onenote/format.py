@@ -52,9 +52,11 @@ def format_page(page: Page) -> str:
     ]
 
     for table in as_array(page.get("tables")):
+        oe = as_string(table.get("oeID"))
+        suffix = f", oe={oe}" if oe else ""
         lines.append(
             f"table {as_string(table.get('objectID'))}: {num(table.get('rows'))}x{num(table.get('columns'))}"
-            f" cells, in outline {_location(table.get('outlineID'))}"
+            f" cells, in outline {_location(table.get('outlineID'))}{suffix}"
         )
 
     for outline in as_array(page.get("outlines")):
