@@ -65,8 +65,10 @@ with the same arguments plus `dryRun=false` and that token.
 
 - A token is single use and expires after 10 minutes.
 - It is bound to the exact arguments, so a different request is refused.
-- For `edit` and inserts into an existing outline it is also bound to the outline as previewed. If
-  that outline changed in OneNote after the dry run, the apply fails with `changed_since_preview`.
+- For `edit` and inserts into an existing outline it is also bound to the outline as previewed. The
+  apply fails with `changed_since_preview` if that outline no longer matches when the write starts.
+  The check runs immediately before the write but is not atomic with it, so a concurrent change in
+  that window can be overwritten.
 - `edit` never accepts raw OneNote XML, and `delete_page` needs the exact page name.
 
 `batch` takes a list of ops, each one of `append_lines`, `insert_table`, `insert_image` or `edit` with
@@ -85,11 +87,13 @@ loop, have your client ask before any call with `dryRun=false`.
 uv sync
 uv run pytest                 # unit, parity and transport tests; no Windows needed
 uv run ruff check . && uv run ruff format --check . && uv run pyright
-DESKHAND_LIVE_NOTEBOOK="My Notebook" uv run python tests/live/onenote.py
+uv run python tests/live/onenote.py
 ```
 
-The live test needs a running OneNote desktop client. It creates a section called `deskhand-probe`
-in the notebook you name, writes and deletes its own pages there, and leaves the section in place.
+The live test needs a running OneNote desktop client. Put `notebook = "My Notebook"` (and optionally
+`section`, default `deskhand-probe`) in `~/.config/deskhand/live.toml`, or set
+`DESKHAND_LIVE_NOTEBOOK`; the variables win over the file. It writes and deletes its own pages there
+and leaves the section in place.
 
 Set `DESKHAND_LOG=info` to log every bridge call and its duration to stderr. See `AGENTS.md` for the
 layout and `src/deskhand/onenote/AGENTS.md` for the OneNote behaviour the bridge depends on.

@@ -95,7 +95,12 @@ class TokenTable:
                 "unknown",
             )
         if entry.used:
-            raise TokenError("This applyToken was already used. Run the dry run again.", "used")
+            raise TokenError(
+                "This applyToken is already used and cannot be retried. An earlier apply may have changed "
+                "the page even if it returned an error; read the page, then run a new dry run for any "
+                "change still needed.",
+                "used",
+            )
         if self._now() > entry.expires_at:
             del self._entries[token]
             raise TokenError("This applyToken has expired. Run the dry run again.", "expired")

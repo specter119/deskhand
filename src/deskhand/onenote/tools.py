@@ -68,8 +68,50 @@ WRITE_FLOW = (
     "'applyToken: <token>' and shows the exact change), "
     "then call it again with the same arguments plus dryRun=false and that applyToken. "
     "A token is single use, expires after 10 minutes, "
-    "and is refused if the arguments differ or the target changed in OneNote after the dry run."
+    "and is refused if the arguments differ or the previewed content no longer matches when the write "
+    "starts. That match is checked immediately before the write but not atomically with it, so a "
+    "concurrent change in between can still be overwritten."
 )
+
+# Outcomes that the bridge cannot reduce to "written" or "not written". They must not be reported as a
+# plain failure: the caller has to read the page before deciding what to do next.
+_UNCERTAIN_OUTCOMES = {
+    "outcome_unknown": "may or may not have been applied",
+    "applied_unverified": "could not be verified after its write call returned",
+}
+
+# Bridge codes that are raised before a write call returns. Anything not listed here is uncertain: a
+# future code must not silently inherit "nothing was written".
+_NO_WRITE_CODES = frozenset(
+    {
+        "ambiguous",
+        "apply_requires_fingerprint",
+        "busy",
+        "changed_since_preview",
+        "com_error",
+        "invalid_request",
+        "name_mismatch",
+        "no_windows_host",
+        "not_found",
+        "rejected",
+        "stale",
+        "unknown_op",
+        "unsupported",
+    }
+)
+# `bridge_failed` is not here: a send can fail after the bytes reached the worker, so an apply must not
+# claim nothing was written. `recording` (0x80042024) is not here either: OneNote does not promise that
+# it refuses before a partial write.
+
+
+def _apply_failure(error: BridgeError) -> BridgeError:
+    """The token is spent by every apply call; the recovery step depends on what the bridge knows."""
+    if error.code in _UNCERTAIN_OUTCOMES:
+        return BridgeError(f"{error} The applyToken is spent.", error.code)
+    if error.code in _NO_WRITE_CODES:
+        return BridgeError(f"{error} The applyToken is spent; run a new dry run before retrying.", error.code)
+    return BridgeError(f"{error} The applyToken is spent; read the page again before retrying.", error.code)
+
 
 Params = dict[str, Any]
 
@@ -177,18 +219,36 @@ async def _run_write(deps: OneNoteDeps, plan: WritePlan, params: Params) -> Tool
         )
 
     fingerprint = deps.tokens.consume(params.get("applyToken"), plan.tool, request)
-    data = await _call(deps, plan.op, {**request, "apply": True, "expectFingerprint": fingerprint})
-    page = normalize_page(data["page"]) if js_truthy(data.get("page")) else None
-    structured = {"status": "applied"}
-    if page is not None:
-        structured["page"] = page
-    if js_truthy(data.get("changes")):
-        structured["changes"] = as_array(data["changes"])
-    described = plan.describe(data, True)
-    return ToolOutput(
-        text=truncate(f"{described}\n\n{format_page(page)}" if page is not None else described),
-        structured=structured,
-    )
+    try:
+        data = await _call(deps, plan.op, {**request, "apply": True, "expectFingerprint": fingerprint})
+    except BridgeError as error:
+        raise _apply_failure(error) from error
+    except Exception as error:
+        # The request may already have reached OneNote. Keep the original text, but do not let an
+        # unexpected exception read as a write that certainly did not happen.
+        raise _apply_failure(
+            BridgeError(
+                f"The apply call raised {type(error).__name__}: {error}. "
+                "Whether OneNote applied it is unknown. Read the page again before retrying.",
+                "outcome_unknown",
+            )
+        ) from error
+    try:
+        page = normalize_page(data["page"]) if js_truthy(data.get("page")) else None
+        structured = {"status": "applied"}
+        if page is not None:
+            structured["page"] = page
+        if js_truthy(data.get("changes")):
+            structured["changes"] = as_array(data["changes"])
+        described = plan.describe(data, True)
+        text = truncate(f"{described}\n\n{format_page(page)}" if page is not None else described)
+    except Exception as error:
+        raise BridgeError(
+            "The write call returned, but its response could not be read: "
+            f"{error}. Read the page before retrying.",
+            "applied_unverified",
+        ) from error
+    return ToolOutput(text=text, structured=structured)
 
 
 def _page_of(data: Params) -> Params:
@@ -249,9 +309,14 @@ def _batch_preview(previews: list[tuple[WritePlan, str]]) -> str:
 def _batch_stopped(index: int, total: int, applied: list[str], error: BridgeError) -> str:
     """What landed when a batch stops: the caller must not assume the rest is untouched."""
     # An unknown outcome must not be reported as "nothing was written": the failing change may have landed.
-    unknown = error.code == "outcome_unknown"
+    # `applied_unverified` is stronger again: its write call returned, but that is not proof of content.
+    # A code this codebase has not classified must not inherit "nothing was written" either.
+    outcome = _UNCERTAIN_OUTCOMES.get(error.code)
+    if outcome is None:
+        outcome = (
+            "failed" if error.code in _NO_WRITE_CODES else "failed, but whether it was written is unknown"
+        )
     if applied:
-        outcome = "may or may not have been applied" if unknown else "failed"
         lines = [f"Applied {len(applied)} of {total} changes, then change {index} {outcome}: {error}"]
         lines.append("Applied:")
         lines.extend(
@@ -260,15 +325,30 @@ def _batch_stopped(index: int, total: int, applied: list[str], error: BridgeErro
             for line in _numbered(number, described).split("\n")
         )
     else:
-        outcome = "may or may not have been applied" if unknown else "failed before anything was written"
-        lines = [f"Change 1 of {total} {outcome}: {error}"]
+        detail = "failed before anything was written" if outcome == "failed" else outcome
+        lines = [f"Change 1 of {total} {detail}: {error}"]
     remaining = total - index
     if remaining == 1:
         lines.append(f"Change {total} was not attempted.")
     elif remaining > 1:
         lines.append(f"Changes {index + 1}-{total} were not attempted.")
-    lines.append("The applyToken is spent. Read the page again and preview the remaining changes.")
+    lines.append(_batch_recovery(applied, error, remaining))
     return "\n".join(lines)
+
+
+def _batch_recovery(applied: list[str], error: BridgeError, remaining: int) -> str:
+    """The token is spent either way; what to read first depends on what is known.
+
+    A known no-write code only means the failing change wrote nothing. Earlier changes may have landed,
+    so their page still has to be read before the remaining changes are previewed.
+    """
+    if applied or error.code not in _NO_WRITE_CODES:
+        if remaining:
+            return "The applyToken is spent. Read the page again and preview the remaining changes."
+        return "The applyToken is spent. Read the page again before deciding whether to retry."
+    if remaining:
+        return "The applyToken is spent. Run a new dry run for the remaining changes."
+    return "The applyToken is spent. Run a new dry run before retrying."
 
 
 async def _batch_plans(
@@ -734,21 +814,59 @@ def build_tools(deps: OneNoteDeps) -> list[ToolSpec]:
                 raise RuntimeError(
                     _batch_stopped(index, len(plans), [described for _, described in applied], error)
                 ) from error
-            applied.append((plan, plan.describe(data, True)))
-            if js_truthy(data.get("page")):
-                page = normalize_page(data["page"])
-        lines = [f"Applied {len(applied)} changes:" if len(applied) > 1 else "Applied the change:"]
-        lines.extend(_numbered(number, described) for number, (_, described) in enumerate(applied, start=1))
-        text = "\n".join(lines)
-        if page is not None:
-            text = f"{text}\n\n{format_page(page)}"
+            except Exception as error:
+                raise RuntimeError(
+                    _batch_stopped(
+                        index,
+                        len(plans),
+                        [described for _, described in applied],
+                        BridgeError(
+                            f"The apply call raised {type(error).__name__}: {error}. "
+                            "Whether OneNote applied it is unknown. Read the page again before retrying.",
+                            "outcome_unknown",
+                        ),
+                    )
+                ) from error
+            try:
+                described = plan.describe(data, True)
+                if js_truthy(data.get("page")):
+                    page = normalize_page(data["page"])
+            except Exception as error:
+                raise RuntimeError(
+                    _batch_stopped(
+                        index,
+                        len(plans),
+                        [described for _, described in applied],
+                        BridgeError(
+                            "The write call returned, but its response could not be read: "
+                            f"{error}. Read the page before retrying.",
+                            "applied_unverified",
+                        ),
+                    )
+                ) from error
+            applied.append((plan, described))
+        try:
+            lines = [f"Applied {len(applied)} changes:" if len(applied) > 1 else "Applied the change:"]
+            lines.extend(
+                _numbered(number, described) for number, (_, described) in enumerate(applied, start=1)
+            )
+            text = "\n".join(lines)
+            if page is not None:
+                text = f"{text}\n\n{format_page(page)}"
+            text = truncate(text)
+        except Exception as error:
+            raise BridgeError(
+                f"All {len(applied)} write calls returned, but the reply could not be formatted: "
+                f"{error}. The applyToken is spent; read the page before retrying.",
+                "applied_unverified",
+            ) from error
         structured: Params = {
             "status": "applied",
             "ops": [{"tool": plan.tool, "description": described} for plan, described in applied],
         }
         if page is not None:
             structured["page"] = page
-        return ToolOutput(truncate(text), structured)
+        return ToolOutput(text, structured)
 
     def spec(
         name: str,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -93,7 +93,7 @@ class Connection:
 @asynccontextmanager
 async def connect(
     bridge: FakeBridge | None = None, tokens: TokenTable | None = None
-) -> AsyncIterator[Connection]:
+) -> AsyncGenerator[Connection]:
     bridge = bridge or FakeBridge()
     tokens = tokens or TokenTable()
     server = create_onenote_server(bridge=bridge, tokens=tokens)

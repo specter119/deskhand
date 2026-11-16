@@ -22,7 +22,17 @@ Issues = "https://github.com/specter119/deskhand/issues"
 deskhand = "deskhand.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff", "pyright"]
+dev = [
+    "pytest>=8",
+    "ruff",
+    "pyright",
+]
+
+# Pin the lockfile to the public index: a machine-level mirror would otherwise be written into uv.lock.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [tool.hatch.version]
 path = "src/deskhand/__init__.py"

@@ -1,9 +1,16 @@
 import os
+from typing import Any
 
 import pytest
+from helpers import text_of
+from mcp import Client
+from mcp.types import ToolAnnotations
 
 from deskhand.core.apply_token import TokenError, TokenTable, hash_request, stable_stringify
 from deskhand.core.powershell import new_call_stem
+from deskhand.core.server import ToolOutput, ToolSpec, build_server
+
+pytestmark = pytest.mark.anyio
 
 
 def test_call_stems_never_collide_across_calls_and_carry_the_pid():
@@ -25,9 +32,9 @@ def test_a_token_is_single_use_bound_to_its_request_and_expires():
     request = {"pageId": "p", "lines": ["x"]}
     token = table.issue("append_lines", request, "fp")
 
-    def reason(*args: object) -> str:
+    def reason(token: str | None, tool: str, request: dict[str, Any]) -> str:
         with pytest.raises(TokenError) as raised:
-            table.consume(*args)  # type: ignore[arg-type]
+            table.consume(token, tool, request)
         return raised.value.reason
 
     assert reason(None, "append_lines", request) == "missing"
@@ -51,3 +58,25 @@ def test_the_table_stays_bounded():
     with pytest.raises(TokenError) as raised:
         table.consume(first, "t", {"n": 0})
     assert raised.value.reason == "unknown"
+
+
+@pytest.mark.parametrize("status", ["applied", "failed"])
+async def test_output_validation_after_a_write_says_the_call_had_returned(status: str):
+    async def run(_: dict[str, object]) -> ToolOutput:
+        return ToolOutput(text="done", structured={"status": status})
+
+    spec = ToolSpec(
+        name="w",
+        title="W",
+        description="w",
+        input_schema={"type": "object"},
+        output_schema={"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}},
+        annotations=ToolAnnotations(read_only_hint=False),
+        run=run,
+    )
+    async with Client(build_server("t", "1", "i", [spec]), mode="legacy") as client:
+        result = await client.call_tool("w", {})
+    assert result.is_error is True
+    text = text_of(result)
+    assert "Output validation error" in text
+    assert ("read the page before retrying" in text) == (status == "applied")

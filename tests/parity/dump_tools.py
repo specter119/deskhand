@@ -15,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "unit"))
 
-from helpers import connect  # noqa: E402  # pyright: ignore[reportMissingImports]
+from helpers import connect  # noqa: E402  # pyright: ignore[reportMissingImports]  # ty: ignore[import-not-found]
 
 from deskhand.onenote.server import INSTRUCTIONS  # noqa: E402
 

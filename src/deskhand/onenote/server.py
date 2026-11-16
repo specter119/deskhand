@@ -22,7 +22,8 @@ INSTRUCTIONS = "\n".join(
         "",
         "Writing is always two steps. Call a write tool without dryRun: nothing is written, the reply starts with 'applyToken: <token>' and shows the exact",
         "change OneNote would receive. To apply, repeat the same call with dryRun=false and that applyToken. A token is single use, expires after 10 minutes,",
-        "belongs to one server process, and is refused when the arguments differ or the target changed in OneNote after the dry run.",
+        "belongs to one server process, and is refused when the arguments differ or the previewed content no longer matches when the write starts.",
+        "That match is checked immediately before the write, not atomically with it, so a concurrent change in that window can be overwritten.",
         "If an apply is interrupted its outcome is unknown: read the page again and preview before retrying.",
         "",
         "Several changes: batch takes a list of ops, each one of append_lines, insert_table, insert_image or edit with that tool's",
@@ -42,8 +43,9 @@ INSTRUCTIONS = "\n".join(
         "when the page does not define that name. insert_image, insert_table and edit append take after: the objectID",
         "of a paragraph to insert after, at any depth.",
         "",
-        "Concurrency: lastModifiedTime does not advance when content is written through COM and the hierarchy API can report a different value than the page",
-        "itself, so it is informational only. Safety comes from the token's content fingerprint, and delete_page additionally requires the exact page name.",
+        "Concurrency: lastModifiedTime has one-second granularity and GetPageContent can return a value that lags the write, so it is informational",
+        "only. Safety comes from the token's content fingerprint, checked immediately before the write, and delete_page",
+        "additionally requires the exact page name; the check and the write are not atomic, so an edit landing between them can be lost.",
     ]
 )
 

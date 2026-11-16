@@ -153,6 +153,9 @@ async def test_a_valid_token_applies_once_with_the_previewed_fingerprint_and_can
 
         replay = await t.call("append_lines", {**args, "dryRun": False, "applyToken": token})
         assert replay.is_error is True
+        assert "read the page" in text_of(replay)
+        assert "new dry run" in text_of(replay)
+        assert "may have changed the page even if it returned an error" in text_of(replay)
         assert len(bridge.apply_calls()) == 1, "the replay never reached the bridge"
 
 
@@ -527,3 +530,288 @@ async def test_batch_says_a_later_change_may_have_landed_when_its_outcome_is_unk
         assert result.is_error is True
         text = text_of(result)
         assert "Applied 1 of 2 changes, then change 2 may or may not have been applied" in text
+
+
+async def test_batch_does_not_claim_nothing_was_written_when_the_first_change_is_unverified():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError(
+                "OneNote applied the write but the read-back failed; the change is in the page.",
+                "applied_unverified",
+            )
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "before anything was written" not in text
+        assert "could not be verified after its write call returned" in text
+
+
+async def test_batch_says_a_later_change_is_unverified_when_its_write_call_returned():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError(
+                "OneNote applied the write but the read-back failed; the change is in the page.",
+                "applied_unverified",
+            )
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"append": preview_handler("fp-append"), "insert_table": table})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert (
+            "Applied 1 of 2 changes, then change 2 could not be verified after its write call returned"
+            in text
+        )
+
+
+@pytest.mark.parametrize("code", ["busy", "changed_since_preview", "rejected"])
+async def test_batch_calls_a_known_no_write_failure_nothing_written(code):
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote said no", code)
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        assert "failed before anything was written" in text_of(result)
+
+
+async def test_batch_does_not_call_an_unclassified_failure_nothing_written():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote said no", "future_code")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "failed, but whether it was written is unknown" in text
+        assert "before anything was written" not in text
+
+
+async def test_batch_a_known_no_write_first_change_says_to_run_a_new_dry_run():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote is busy", "busy")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["b"]]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        text = text_of(result)
+        assert "failed before anything was written" in text
+        assert "Run a new dry run for the remaining changes." in text
+        assert "Read the page again" not in text
+
+
+async def test_batch_a_known_no_write_last_change_says_to_run_a_new_dry_run():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote is busy", "busy")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert "Run a new dry run before retrying." in text_of(result)
+
+
+async def test_batch_an_unknown_last_change_says_to_read_the_page_first():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote said nothing readable", "outcome_unknown")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        text = text_of(result)
+        assert "may or may not have been applied" in text
+        assert "Read the page again before deciding whether to retry." in text
+        assert "Run a new dry run" not in text
+
+
+async def test_batch_reads_the_page_when_an_earlier_change_landed_even_if_this_one_did_not():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote is busy", "busy")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"append": preview_handler("fp-append"), "insert_table": table})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "insert_table", "pageId": "p1", "rows": [["a"]]},
+        {"tool": "append_lines", "pageId": "p1", "lines": ["b"]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        text = text_of(result)
+        assert "Applied 1 of 3 changes, then change 2 failed" in text
+        assert "Read the page again and preview the remaining changes." in text
+        assert "Run a new dry run" not in text
+
+
+async def test_batch_all_writes_returned_but_the_reply_could_not_be_formatted(monkeypatch):
+    def boom(_page):
+        raise RuntimeError("bad page model")
+
+    monkeypatch.setattr("deskhand.onenote.tools.format_page", boom)
+    bridge = FakeBridge({"append": preview_handler("fp-append")})
+    ops = [
+        {"tool": "append_lines", "pageId": "p1", "lines": ["a"]},
+        {"tool": "append_lines", "pageId": "p1", "lines": ["b"]},
+    ]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "All 2 write calls returned" in text
+        assert "could not be formatted" in text
+        assert "The applyToken is spent" in text
+        assert "read the page" in text
+        assert "failed before anything was written" not in text
+
+
+async def test_an_unexpected_apply_exception_reads_as_an_unknown_outcome():
+    def append(args):
+        if args.get("apply"):
+            raise RuntimeError("worker exploded")
+        return preview_handler("fp-append")(args)
+
+    bridge = FakeBridge({"append": append})
+    async with connect(bridge) as t:
+        args = {"pageId": "p1", "lines": ["a"]}
+        token = (await t.call("append_lines", args)).structured_content["applyToken"]
+        result = await t.call("append_lines", {**args, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "The apply call raised RuntimeError: worker exploded" in text
+        assert "Whether OneNote applied it is unknown" in text
+        assert "The applyToken is spent" in text
+        assert "Read the page again" in text
+
+
+async def test_an_unexpected_dry_run_exception_stays_a_plain_failure():
+    def append(_args):
+        raise RuntimeError("worker exploded")
+
+    bridge = FakeBridge({"append": append})
+    async with connect(bridge) as t:
+        result = await t.call("append_lines", {"pageId": "p1", "lines": ["a"]})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "worker exploded" in text
+        assert "may have been applied" not in text
+        assert "applyToken" not in text
+
+
+@pytest.mark.parametrize("code", ["recording", "bridge_failed"])
+async def test_an_unproven_no_write_code_reads_as_unknown(code):
+    def append(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote said no", code)
+        return preview_handler("fp-append")(args)
+
+    bridge = FakeBridge({"append": append})
+    async with connect(bridge) as t:
+        args = {"pageId": "p1", "lines": ["a"]}
+        token = (await t.call("append_lines", args)).structured_content["applyToken"]
+        result = await t.call("append_lines", {**args, "dryRun": False, "applyToken": token})
+        text = text_of(result)
+        assert "The applyToken is spent; read the page again before retrying." in text
+
+
+async def test_batch_treats_recording_as_unknown():
+    def table(args):
+        if args.get("apply"):
+            raise BridgeError("OneNote is recording", "recording")
+        return preview_handler("fp-table")(args)
+
+    bridge = FakeBridge({"insert_table": table})
+    ops = [{"tool": "insert_table", "pageId": "p1", "rows": [["a"]]}]
+    async with connect(bridge) as t:
+        token = (await t.call("batch", {"ops": ops})).structured_content["applyToken"]
+        result = await t.call("batch", {"ops": ops, "dryRun": False, "applyToken": token})
+        text = text_of(result)
+        assert "failed, but whether it was written is unknown" in text
+        assert "Read the page again before deciding whether to retry." in text
+
+
+async def test_a_failed_apply_says_the_token_is_spent_and_how_to_recover():
+    for code, recovery in [
+        ("busy", "run a new dry run before retrying"),
+        ("future_code", "read the page again before retrying"),
+        ("outcome_unknown", "Read the page again and preview before retrying"),
+    ]:
+
+        def append(args, code=code):
+            if args.get("apply"):
+                raise BridgeError("OneNote said no. Read the page again and preview before retrying.", code)
+            return preview_handler("fp-append")(args)
+
+        bridge = FakeBridge({"append": append})
+        async with connect(bridge) as t:
+            args = {"pageId": "p1", "lines": ["a"]}
+            token = (await t.call("append_lines", args)).structured_content["applyToken"]
+            result = await t.call("append_lines", {**args, "dryRun": False, "applyToken": token})
+            assert result.is_error is True
+            text = text_of(result)
+            assert "The applyToken is spent" in text
+            assert recovery in text
+            if code == "outcome_unknown":
+                assert "run a new dry run before retrying" not in text
+
+
+async def test_a_write_whose_response_cannot_be_read_does_not_read_as_a_plain_failure():
+    def append(args):
+        if args.get("apply"):
+            return {
+                "applied": True,
+                "fingerprint": "fp-append",
+                "page": {"id": "p1", "tables": ["not a table"]},
+                "changes": [],
+            }
+        return preview_handler("fp-append")(args)
+
+    bridge = FakeBridge({"append": append})
+    async with connect(bridge) as t:
+        args = {"pageId": "p1", "lines": ["a"]}
+        token = (await t.call("append_lines", args)).structured_content["applyToken"]
+        result = await t.call("append_lines", {**args, "dryRun": False, "applyToken": token})
+        assert result.is_error is True
+        text = text_of(result)
+        assert "write call returned" in text
+        assert "could not be read" in text
+        assert "Read the page before retrying" in text

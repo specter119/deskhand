@@ -50,6 +50,13 @@ rev = "v0.27"
 id = "validate-pyproject"
 
 [[repos]]
+repo = "https://github.com/astral-sh/ty-pre-commit"
+rev = "v0.0.104"
+
+[[repos.hooks]]
+id = "ty"
+
+[[repos]]
 repo = "local"
 
 # bridge.ps1 is shipped as UTF-8 and sent to Windows PowerShell 5.1 as text, so it must parse there,
@@ -57,7 +64,7 @@ repo = "local"
 # running it cannot drift from them the way a re-implementation in a hook would.
 [[repos.hooks]]
 id = "bridge-script-rules"
-name = "bridge.ps1: parses in Windows PowerShell 5.1, ASCII only, never exits"
+name = "bridge.ps1 rules"
 language = "system"
 entry = "uv run pytest tests/unit/test_bridge_script.py -q"
 files = "\\.ps1$"
@@ -68,21 +75,12 @@ require_serial = true
 # see in the diff.
 [[repos.hooks]]
 id = "advertised-tools-are-current"
-name = "fixtures/tools.json matches the advertised tools"
+name = "tools.json is current"
 language = "system"
 entry = "bash -c 'uv run python tests/parity/dump_tools.py || exit 1; git diff --exit-code -- tests/parity/fixtures/tools.json || { echo \"fixtures/tools.json was regenerated; review and stage it\"; exit 1; }'"
 files = "^(src/deskhand/onenote/(schemas|tools|server)\\.py|tests/parity/dump_tools\\.py)$"
 pass_filenames = false
 require_serial = true
-
-# The repository AGENTS.md keeps uv.lock out of the tree: it records the local package index URL.
-[[repos.hooks]]
-id = "no-uv-lock"
-name = "uv.lock must not be committed"
-language = "system"
-entry = "bash -c 'echo \"uv.lock records the local package index URL; keep it out of the commit\"; exit 1'"
-files = "^uv\\.lock$"
-pass_filenames = false
 
 # Slow checks: they need the whole tree, not the staged files, so they run before a push.
 [[repos.hooks]]

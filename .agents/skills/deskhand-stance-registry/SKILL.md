@@ -71,7 +71,7 @@ Designs that served both sides of a pair. Recorded so the next pass does not rel
 
 | Conflict | Pair | Status | Decision record |
 | -------- | ---- | ------ | --------------- |
-| —        | —    | none open | —            |
+| a concurrent edit between the fingerprint check and `UpdatePageContent` is overwritten, so `applied` does not imply no lost update | `deskhand-write-integrity-stance` vs `deskhand-contract-continuity-stance` | measured-not-adopted: the window is reproduced live; `lastModifiedTime` has one-second granularity and can lag, so it cannot close it | pass 3; `src/deskhand/onenote/AGENTS.md#concurrency` |
 
 ## Decisions that sacrificed a stance
 
@@ -80,6 +80,7 @@ Designs that served both sides of a pair. Recorded so the next pass does not rel
 | `1da5f3f` | `deskhand-write-integrity-stance`     | the full change set in the preview: objectIDs, full texts, all results    | a confirmation nobody can read is not a confirmation       |
 | `7255575` | `deskhand-contract-continuity-stance` | the advertised schemas stayed byte-identical to the TypeScript record     | a real page had to match an existing series                |
 | `8c5b822` | `deskhand-quiet-desktop-stance`       | no process on the desktop between calls                                   | 0.9 s per call and a `0x800706BF` race were worse          |
+| this change (2026-11-16) | `deskhand-write-integrity-stance` | "applied" no longer implies that no concurrent edit was lost | the check and the COM write cannot be one atomic step; a CAS was measured and rejected (granularity and lag) |
 
 ## Deferred axes
 
@@ -114,6 +115,7 @@ output: write-integrity, preview-legibility, contract-continuity, edit-expressiv
 | ---- | ------ | -------------- | ------- |
 | 1    | `09464eb` | integrity vs legibility, continuity vs expressiveness, and a map miss (legibility vs continuity) | 4 findings, all merged by sequencing; no escalation |
 | 2    | `fc1ac784` | integrity vs legibility, continuity vs expressiveness, legibility vs continuity | 18 findings; 11 fixed, 3 accepted mechanism decisions, 4 deferred axes; no escalation |
+| 3    | `d10533cd` + uncommitted batch wording | integrity vs continuity, integrity vs expressiveness | 2 findings on the batch error text fixed; 1 mechanism limit documented and left open |
 
 Pass 1 detail. Four independent reviewers, one stance each, no shared output. Findings:
 
@@ -208,6 +210,39 @@ only), and the `oeID` field survived as the only removal handle until C6 and P1 
 structured channels. W1, W3 and W4 are `seen before` findings that the mechanism docs already accept,
 so they show the pass can restate a known limit, not that it found a new one. P2's objection is the
 one that changed the implementation: it rejected a label built on the table's own id.
+
+Pass 3 detail. Two independent reviewers, both briefed to attack the proposed fixes rather than the
+target, plus a statechart check of the write gate. The statechart found one rule broken:
+`AppliedIsFresh`, the claim that an apply whose fingerprint check passed cannot overwrite a
+concurrent edit. The fingerprint is recomputed immediately before `UpdatePageContent`, but the two
+are separate calls, so a write that lands between them is overwritten. A live replay that paused
+after the check reproduced it: the apply reported `applied` and the concurrent append was gone. The
+precise claim is therefore "applied does not guarantee no lost update", not "the final content
+differs from the preview". `dateExpectedLastModified` is hard-coded to `MinValue`, so no
+compare-and-swap is in play.
+
+- I1 `write-integrity`, new: `batch` classified `applied_unverified` as an ordinary failure and could
+  print "failed before anything was written" after a write call had returned.
+- I2 `write-integrity`, new: an apply that failed on `busy`, `rejected`, `stale` or an unclassified
+  code consumed the token without saying so, and the `used` reply did not say to read the page first.
+- C7 `contract-continuity`, new: the tool text and `INSTRUCTIONS` promised that a changed target is
+  refused, which the race above falsifies.
+
+Contest and classification. I1 and I2 are merged by wording: uncertain outcomes say the write call
+returned and could not be verified; only a closed list of known no-write codes says "failed"; an
+unclassified code says the token is spent and to read the page. C7 is incompatible with the current
+mechanism rather than with another stance: no wording can make the check atomic. A live spike
+measured `dateExpectedLastModified`: a cross-second stale value is refused with `0x80042010` and the
+content is unchanged, but same-second values are accepted and `GetPageContent` can lag by about two
+seconds, so it cannot close the window. Not adopted. It is recorded as an open conflict and stated
+in the user-visible text, `README.md`, `bridge.ps1` and `src/deskhand/onenote/AGENTS.md`. Nothing is
+claimed as fixed beyond that.
+
+Counterexamples harvested. The statechart rule that broke was an unstated assumption in the tool
+text, so the model found what four prior stance passes had accepted. The dissolve review also showed
+that `outcome_unknown` and `applied_unverified` must stay distinct: the first has no evidence the
+write started, the second has a returned write call. Merging them would let one reply claim more than
+is known.
 
 ## Operational notes
 

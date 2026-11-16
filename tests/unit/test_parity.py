@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 from helpers import FakeBridge, connect
+from mcp.types import TextContent
 
 from deskhand.core.apply_token import TokenTable
 from deskhand.core.powershell import BridgeError
@@ -101,7 +102,7 @@ async def test_every_scenario_step_produces_the_recorded_transcript(tmp_path: Pa
 
         got: dict[str, Any] = {"name": step["name"], "tool": step["tool"], "isError": bool(result.is_error)}
         if not result.is_error:
-            got["text"] = "\n".join(block.text for block in result.content)  # type: ignore[union-attr]
+            got["text"] = "\n".join(block.text for block in result.content if isinstance(block, TextContent))
             got["structuredContent"] = result.structured_content
             issued[step["name"]] = (result.structured_content or {}).get("applyToken")
         got["bridgeCalls"] = [{"op": call["op"], "args": _redact(call["args"])} for call in bridge.calls]

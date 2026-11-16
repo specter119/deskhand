@@ -48,7 +48,7 @@ that proves the project would sacrifice something to keep the objective. The sta
 | -------------------------------------------- | ------------------------------- | ------------------------------------------------------------------ |
 | Python rewrite and the frozen TypeScript branch | `64ab0fa`, `86aaf13`         | a one-way door already passed; nothing trades against it now       |
 | Graph versus COM                             | `src/deskhand/onenote/AGENTS.md` (opening) | decided at the boundary; the surviving objective is S6             |
-| `uv.lock` and the non-editable install       | `AGENTS.md#Rules`               | a maintainer environment procedure, not a project objective        |
+| `uv tool install` (non-editable)             | `AGENTS.md#Rules`               | a maintainer environment procedure, not a project objective        |
 
 ## 5. Candidate stance set
 

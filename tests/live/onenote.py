@@ -1,9 +1,15 @@
 """Live checks against a real OneNote desktop client. Needs WSL with Windows interop.
 
-    DESKHAND_LIVE_NOTEBOOK="<existing notebook name>" uv run python tests/live/onenote.py
+    uv run python tests/live/onenote.py
 
-Every page it creates is titled "deskhand-live-<pid>-..." in the section DESKHAND_LIVE_SECTION
-(default "deskhand-probe", created if missing) and is deleted again, also when a check fails.
+The notebook and section come from DESKHAND_LIVE_NOTEBOOK and DESKHAND_LIVE_SECTION, or from a
+per-machine file at ~/.config/deskhand/live.toml:
+
+    notebook = "<existing notebook name>"
+    section = "deskhand-probe"  # optional, this is the default
+
+Every page it creates is titled "deskhand-live-<pid>-..." in that section (created if missing) and is
+deleted again, also when a check fails.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ import struct
 import sys
 import tempfile
 import time
+import tomllib
 import traceback
 import zlib
 from collections.abc import Awaitable, Callable
@@ -32,10 +39,31 @@ from mcp import Client, StdioServerParameters
 from deskhand.core.powershell import BridgeError, PowerShellBridge, work_dir_from_temp
 from deskhand.onenote.server import BRIDGE_SCRIPT
 
-NOTEBOOK = os.environ.get("DESKHAND_LIVE_NOTEBOOK")
-SECTION = os.environ.get("DESKHAND_LIVE_SECTION", "deskhand-probe")
-if not NOTEBOOK:
-    sys.exit("Set DESKHAND_LIVE_NOTEBOOK to the name of an existing notebook.")
+CONFIG_PATH = Path(
+    os.environ.get("DESKHAND_LIVE_CONFIG") or Path.home() / ".config" / "deskhand" / "live.toml"
+)
+
+
+def local_config() -> dict[str, Any]:
+    """A per-machine file, so a trusted machine needs no environment variables per run."""
+    if not CONFIG_PATH.is_file():
+        return {}
+    try:
+        return tomllib.loads(CONFIG_PATH.read_text("utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        sys.exit(f"Cannot read {CONFIG_PATH}: {error}")
+
+
+CONFIG = local_config()
+NOTEBOOK = os.environ.get("DESKHAND_LIVE_NOTEBOOK") or CONFIG.get("notebook")
+SECTION = os.environ.get("DESKHAND_LIVE_SECTION") or CONFIG.get("section") or "deskhand-probe"
+if not isinstance(NOTEBOOK, str) or not NOTEBOOK:
+    sys.exit(
+        'Set DESKHAND_LIVE_NOTEBOOK, or put `notebook = "<existing notebook>"` in '
+        f"{CONFIG_PATH} (optionally `section`, default {SECTION!r})."
+    )
+if not isinstance(SECTION, str) or not SECTION:
+    sys.exit(f"`section` in {CONFIG_PATH} must be a non-empty string.")
 
 ENSURE_SECTION = (Path(__file__).parent / "ensure-section.ps1").read_text("utf-8")
 TAG = f"deskhand-live-{os.getpid()}-{int(time.time()):x}"
@@ -241,11 +269,11 @@ async def main() -> int:
 
             async def lists_tools() -> None:
                 tools = (await a.client.list_tools()).tools
-                assert len(tools) == 10
+                assert len(tools) == 11
                 for tool in tools:
                     assert tool.output_schema, f"{tool.name} has no output_schema"
 
-            await check("lists ten tools with output schemas", lists_tools)
+            await check("lists eleven tools with output schemas", lists_tools)
 
             async def notebooks() -> None:
                 data = (await a.call("notebooks")).data
@@ -461,8 +489,40 @@ async def main() -> int:
                 assert len(page["tables"]) == 1
                 assert page["tables"][0]["rows"] == 3
                 assert page["tables"][0]["columns"] == 2
+                state["table_id"] = page["tables"][0]["objectID"]
 
             await check("insert_table adds a table", table)
+
+            async def remove_table() -> None:
+                page = await read_page(a, state["page_id"])
+                anchor = next(line for line in page["lines"] if line["outlineID"] and not line["inTitle"])
+                _, applied, _ = await a.write(
+                    "insert_table",
+                    {
+                        "pageId": state["page_id"],
+                        "headers": ["gone"],
+                        "rows": [["x"]],
+                        "after": anchor["objectID"],
+                    },
+                )
+                assert not applied.is_error, applied.text
+                page = await read_page(a, state["page_id"])
+                doomed = next(t for t in page["tables"] if t["objectID"] != state["table_id"])
+                assert doomed.get("oeID"), "read_page must report the OE that holds the table"
+                preview = await a.call("edit", {"pageId": state["page_id"], "remove": [doomed["oeID"]]})
+                assert not preview.is_error, preview.text
+                assert f"[table oe={doomed['oeID']}" in preview.text, preview.text
+                _, applied, _ = await a.write(
+                    "edit", {"pageId": state["page_id"], "remove": [doomed["oeID"]]}
+                )
+                assert not applied.is_error, applied.text
+                page = await read_page(a, state["page_id"])
+                assert all(t["objectID"] != doomed["objectID"] for t in page["tables"])
+                assert any(t["objectID"] == state["table_id"] for t in page["tables"]), (
+                    "other table must stay"
+                )
+
+            await check("edit removes a table by the OE read_page reports", remove_table)
 
             async def image() -> None:
                 with tempfile.TemporaryDirectory(prefix="deskhand-live-") as directory:

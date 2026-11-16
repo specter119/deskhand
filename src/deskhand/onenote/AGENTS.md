@@ -27,7 +27,9 @@ The rest of this file explains _why_, but these are the rules to keep:
 5. Every write is default-deny, in two layers. The bridge writes only with `apply=true` **and** the
    `expectFingerprint` of a preview (`apply_requires_fingerprint`, `changed_since_preview`). The
    server hands out that fingerprint only inside a single-use, 10-minute `applyToken` that is bound
-   to the exact request (`core/apply_token.py`). Do not add a path that skips either layer.
+   to the exact request (`core/apply_token.py`). Do not add a path that skips either layer. The
+   bridge checks the fingerprint immediately before the COM write, not atomically with it; do not
+   describe that check as preventing a lost update.
 
 ## Files
 
@@ -310,17 +312,23 @@ chooses the size. Verified working up to **5.4 MB of base64**.
 
 This dictates the write design, and it cost two discarded implementations:
 
-- It **does not advance when content is written through COM.** Three appends in a row left it at the
-  page's creation second.
-- `GetHierarchy` can report a **different value** than `GetPageContent` for the same page.
+- It has **one-second granularity**: writes in the same second leave it unchanged, which is why three
+  appends in a row appeared not to move it.
+- `GetPageContent` can return a value that **lags the write by about two seconds**, and `GetHierarchy`
+  has been observed stale as well.
 
-So comparing it refuses legitimate writes while detecting nothing. Both guards built on it were
-removed during development: one refused a correct append with `stale` even though nothing had
-changed, and feeding back the value just read protects nothing. Instead:
+So comparing it refuses legitimate writes (the value just read can be stale) while missing a
+same-second edit. Both guards built on it were removed during development: one refused a correct
+append with `stale` even though nothing had changed. Instead:
 
 - appends are additive and cannot clobber a concurrent edit, so their fingerprint only names the page;
 - `delete_page` guards on the **exact page name** (`expectName` is required);
 - `lastModified` is reported as informational only.
+
+The fingerprint check and `UpdatePageContent` are two steps. Another client can write between them,
+and that write is then overwritten by the outline sent from the preview: `applied` means the write
+call returned, not that no concurrent edit was lost. A live replay that paused after the check
+reproduced this, so the reply text and the tool instructions say so instead of promising otherwise.
 
 ## Not implemented
 
@@ -335,8 +343,10 @@ changed, and feeding back the value just read protects nothing. Instead:
 - `uv run pytest` runs the unit tests against a fake bridge through an in-memory MCP client, the transport
   against a fake resident `powershell.exe` that speaks the worker protocol, static checks on `bridge.ps1`, and replays `tests/parity/scenario.json` against the transcripts recorded
   from the TypeScript implementation. They need neither Windows nor OneNote.
-- `DESKHAND_LIVE_NOTEBOOK="<notebook>" uv run python tests/live/onenote.py` starts two real server processes against
-  the OneNote desktop client. It creates the section `deskhand-probe` if it is missing and leaves it
+- `uv run python tests/live/onenote.py` starts two real server processes against the OneNote desktop
+  client. The notebook and section come from `~/.config/deskhand/live.toml` (`notebook`, optional
+  `section`) or from `DESKHAND_LIVE_NOTEBOOK` / `DESKHAND_LIVE_SECTION`. It creates the section
+  `deskhand-probe` if it is missing and leaves it
   in place, and it deletes every page it created. Run it from WSL after any change to `bridge.ps1`
   or the transport; it covers the lifecycle, token refusal, `changed_since_preview`, tables, images,
   two processes working at once, a worker reconnecting after OneNote exits (only when the run started OneNote itself), one worker per server that survives every kind of bridge error, no worker left

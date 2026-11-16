@@ -37,10 +37,11 @@
 # Every call writes a response; a missing response file is the only hard failure.
 #
 # Write contract: every write op is default-deny. It only writes when the request carries
-# apply=true AND a non-empty expectFingerprint. The fingerprint is recomputed here, right before
-# the COM write, from the live page (or section / page name), and a mismatch is refused with code
-# changed_since_preview. Without apply=true the op is a preview and returns the fingerprint that a
-# later apply must present. The fingerprint is a content hash, never lastModifiedTime.
+# apply=true AND a non-empty expectFingerprint. The fingerprint is recomputed here, immediately
+# before the COM write, from the live page (or section / page name), and a mismatch is refused with
+# code changed_since_preview. The check and UpdatePageContent are not atomic, so a write that lands
+# between them is not refused. Without apply=true the op is a preview and returns the fingerprint
+# that a later apply must present. The fingerprint is a content hash, never lastModifiedTime.
 
 $ErrorActionPreference = 'Stop'
 
@@ -718,12 +719,12 @@ function New-OutlineXml($paragraphs, $position, $pageNode) {
 # overwritten (0x80042022 is "content loss"). xsSchema must be 2 (xs2013) because this bridge writes
 # the 2013 namespace: 0 and 1 are rejected with 0x80042001.
 #
-# dateExpectedLastModified is deliberately always MinValue, which means "do not check". It cannot
-# be turned into a concurrency guard: lastModifiedTime does not advance when content is written
-# through COM (three appends in a row left it at the page's creation second) and GetHierarchy can
-# report a different value than GetPageContent for the same page. Feeding back the value just read
-# therefore protects nothing while refusing legitimate writes. Appends are additive and cannot
-# clobber concurrent edits; delete_page guards on the page name instead.
+# dateExpectedLastModified is deliberately always MinValue, which means "do not check". It is not a
+# reliable concurrency guard: lastModifiedTime has one-second granularity, so two writes in the same
+# second are indistinguishable, and GetPageContent can return a value that lags the write by about two
+# seconds. Feeding back the value just read therefore refuses legitimate writes (0x80042010) while
+# missing a same-second edit. Appends are additive and cannot clobber concurrent edits; delete_page
+# guards on the page name instead.
 $XSCHEMA_2013 = 2
 
 # HRESULTs are compared as upper-case strings ('0x80042010'): a hex literal below 0x80000000 is an Int32 in
@@ -735,6 +736,8 @@ $HR_RECORDING = '0x80042024'
 # Refusals OneNote is known to make: the request was rejected and nothing was written. The rest of the
 # 0x800420xx range is not assumed, because a code this bridge has never seen may follow a partial write.
 # 0x80042023 is OneNote's own timeout and 0x80042024 means recording, so neither is a refusal.
+# Recording is its own code, not `busy`: this bridge has no evidence that OneNote refuses before a
+# partial write while recording, so an apply must read the page instead of claiming nothing happened.
 $HR_REFUSED = @('0x80042001', '0x8004200E', '0x80042014', '0x80042022')
 # A COM diagnostic can be arbitrarily long and a client cuts a long reply in the middle.
 $DIAGNOSTIC_MAX = 300
@@ -770,7 +773,8 @@ function Get-HResultHex($errorRecord) {
 # is outcome_unknown, because the write may have landed.
 function Get-WriteFailureCode([string]$hex) {
 	if ([string]::IsNullOrEmpty($hex)) { return 'com_error' }
-	if ($hex -in $HR_BUSY -or $hex -eq $HR_RECORDING) { return 'busy' }
+	if ($hex -in $HR_BUSY) { return 'busy' }
+	if ($hex -eq $HR_RECORDING) { return 'recording' }
 	if ($hex -eq $HR_STALE_PAGE) { return 'stale' }
 	if ($hex -in $HR_REFUSED) { return 'rejected' }
 	return 'outcome_unknown'
@@ -794,6 +798,7 @@ function Fail-Write($errorRecord, [string]$action) {
 	switch ($code) {
 		'stale' { Fail ('OneNote refused the update as stale (' + $hex + '); re-read the page and retry') $code }
 		'busy' { Fail ('OneNote is busy (' + $hex + ') and did not ' + $action + '; try again shortly') $code }
+		'recording' { Fail ('Read the page again and preview before retrying: OneNote is recording, so whether it managed to ' + $action + ' is unknown (' + $hex + '): ' + $why) $code }
 		'rejected' { Fail ('OneNote refused to ' + $action + ' (' + $hex + '): ' + $why) $code }
 		'outcome_unknown' {
 			# The guidance comes first so a client that cuts the reply cannot remove it.
@@ -1336,8 +1341,8 @@ function Invoke-Request([string]$stem) {
 
 			'delete_page' {
 				$page = Resolve-Page $onenote ([string]$req.pageId) ([string]$req.notebook) ([string]$req.section) ([string]$req.page)
-				# The page name is the guard, not a timestamp: lastModifiedTime does not track content
-				# written through COM, so comparing it would refuse correct deletes and miss changed pages.
+				# The page name is the guard, not a timestamp: lastModifiedTime has one-second granularity
+				# and can lag, so comparing it would refuse correct deletes and miss changed pages.
 				$expectName = [string]$req.expectName
 				if ([string]::IsNullOrEmpty($expectName)) {
 					Fail 'expectName is required: pass the page name you believe this id refers to' 'invalid_request'

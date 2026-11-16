@@ -8,12 +8,13 @@ that carries only a message. An unknown tool name is a protocol error.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
 from jsonschema import Draft202012Validator
+from jsonschema.protocols import Validator
 from mcp import MCPError
 from mcp.server import Server, ServerRequestContext
 from mcp.types import (
@@ -50,7 +51,7 @@ class ToolSpec:
     """Throws on failure; the message becomes the `isError` text."""
 
 
-def _first_error(validator: Draft202012Validator, value: Any) -> str | None:
+def _first_error(validator: Validator, value: Any) -> str | None:
     error = next(iter(sorted(validator.iter_errors(value), key=lambda e: list(e.absolute_path))), None)
     if error is None:
         return None
@@ -108,11 +109,17 @@ def build_server(
 
         problem = _first_error(output_validators[spec.name], output.structured)
         if problem:
-            return _failure(f"Output validation error: {problem}")
+            # A write handler's result can fail validation after the write call returned. Do not let that
+            # read as a plain failure with nothing written.
+            returned = (
+                output.structured.get("status") == "applied" or output.structured.get("applied") is True
+            )
+            note = " The write call had already returned; read the page before retrying." if returned else ""
+            return _failure(f"Output validation error: {problem}{note}")
         return CallToolResult(content=[TextContent(text=output.text)], structured_content=output.structured)
 
     @asynccontextmanager
-    async def lifespan(_: Server[Any]) -> AsyncIterator[dict[str, Any]]:
+    async def lifespan(_: Server[Any]) -> AsyncGenerator[dict[str, Any]]:
         try:
             yield {}
         finally:

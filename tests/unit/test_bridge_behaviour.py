@@ -226,7 +226,7 @@ def outcomes() -> dict[str, dict[str, Any]]:
         ("append_rejected", False, "rejected"),
         ("append_stale", False, "stale"),
         ("append_busy", False, "busy"),
-        ("append_recording", False, "busy"),
+        ("append_recording", False, "recording"),
         ("append_gone", False, "outcome_unknown"),
         ("append_efail", False, "outcome_unknown"),
         ("append_onenote_timeout", False, "outcome_unknown"),
@@ -253,6 +253,10 @@ def test_the_error_text_of_each_classification_is_pinned(outcomes):
     )
     assert outcomes["append_busy"]["error"] == (
         "OneNote is busy (0x80010001) and did not update the page; try again shortly"
+    )
+    assert outcomes["append_recording"]["error"] == (
+        "Read the page again and preview before retrying: OneNote is recording, so whether it managed to "
+        "update the page is unknown (0x80042024): fake 0x80042024"
     )
     assert outcomes["append_rejected"]["error"] == (
         "OneNote refused to update the page (0x80042001): fake 0x80042001"

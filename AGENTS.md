@@ -20,7 +20,8 @@ application, a small shared core. Only `onenote` exists today.
   list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
   formatting, the `after` anchor, `batch`, and removing a table by its `one:OE` id were added on
   purpose.
-- `tests/live/`: real OneNote, run by hand with `DESKHAND_LIVE_NOTEBOOK`.
+- `tests/live/`: real OneNote, run by hand after setting `notebook` in `~/.config/deskhand/live.toml`
+  (or `DESKHAND_LIVE_NOTEBOOK`).
 - `integrations/pi/`: the pi extension that asks before an apply runs. The root `package.json` makes
   this repository installable as a pi package, so pi loads the extension from its clone of `master`;
   a change to the gate takes effect after it is pushed, not after it is saved.
@@ -33,7 +34,8 @@ application, a small shared core. Only `onenote` exists today.
 - `bridge.ps1` is shipped as UTF-8 and sent to Windows PowerShell 5.1 as text, so it must parse there.
   Check it after editing, and run the live test. It runs inside a resident worker, so it must never `exit`.
 - Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` and `uv run pytest` before
-  committing. Do not commit `uv.lock`: it records the local package index URL.
+  committing. Commit `uv.lock`: `pyproject.toml` pins the official PyPI index, so it does not record a
+  machine-level mirror.
 - Install the local copy with `uv tool install <repo>` (not `--editable`) and `--reinstall` after a change;
   an editable install breaks `deskhand` whenever the working copy is on another branch.
 - Python code that formats numbers or text for users goes through `core/compat.py`: JavaScript and Python
