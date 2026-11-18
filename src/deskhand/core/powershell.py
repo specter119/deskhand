@@ -18,10 +18,9 @@ import shutil
 import time
 import uuid
 from asyncio.subprocess import DEVNULL, PIPE
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from deskhand.core.compat import compact
 
@@ -42,28 +41,34 @@ PROTOCOL_VERSION = "1"
 
 log = logging.getLogger("deskhand.powershell")
 
-BridgeFn = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
-"""One bridge call: an op name plus its arguments, resolved to the op's `data` object."""
+
+class BridgeFn(Protocol):
+    """One bridge call: an op name plus its arguments, resolved to the op's `data` object."""
+
+    async def __call__(
+        self, op: str, args: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]: ...
 
 
 class BridgeError(Exception):
     """A failure reported by the bridge, or by the transport around it. `code` is machine-readable."""
 
-    def __init__(self, message: str, code: str) -> None:
+    def __init__(self, message: str, code: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.details = details
 
 
-def _malformed_response(applying: bool) -> BridgeError:
+def _malformed_response(applying: bool, app: str = "OneNote", target: str = "page") -> BridgeError:
     """A well-formed line is not a verdict: an answer this code cannot read may still follow a write."""
     if applying:
         return BridgeError(
-            "OneNote bridge produced a malformed response for a write, so whether OneNote applied it is "
-            "unknown. Read the page again and preview before retrying.",
+            f"{app} bridge produced a malformed response for a write, so whether {app} applied it is "
+            f"unknown. Read the {target} again and preview before retrying.",
             "outcome_unknown",
         )
     return BridgeError(
-        "OneNote bridge produced a malformed response; the bridge script may have failed before it could "
+        f"{app} bridge produced a malformed response; the bridge script may have failed before it could "
         "report an error",
         "no_response",
     )
@@ -234,8 +239,8 @@ class PowerShellBridge:
     """Calls one op of a PowerShell bridge script. Nothing touches Windows until the first call.
 
     The first call starts a resident powershell.exe that loads the script once; every later call
-    costs one stdin line and two small files. Calls run one at a time because OneNote's COM server
-    is single-threaded anyway.
+    costs one stdin line and two small files. Calls run one at a time because the app's COM server is
+    single-threaded anyway.
     """
 
     def __init__(
@@ -243,7 +248,10 @@ class PowerShellBridge:
         script_path: Path,
         work_subdir: str,
         *,
+        app_name: str = "OneNote",
+        target_name: str = "page",
         timeout: float = CALL_TIMEOUT_S,
+        close_grace: float = CLOSE_GRACE_S,
         startup_timeout: float = STARTUP_TIMEOUT_S,
         idle_timeout: float = IDLE_TIMEOUT_S,
         powershell: str | None = None,
@@ -251,6 +259,9 @@ class PowerShellBridge:
     ) -> None:
         self._script_path = script_path
         self._work_subdir = work_subdir
+        self._app_name = app_name
+        self._target_name = target_name
+        self._close_grace = close_grace
         self._timeout = timeout
         self._startup_timeout = startup_timeout
         self._idle_timeout = idle_timeout
@@ -278,7 +289,9 @@ class PowerShellBridge:
         self._setup = _Setup(powershell, work, script)
         return self._setup
 
-    async def __call__(self, op: str, args: dict[str, Any]) -> dict[str, Any]:
+    async def __call__(
+        self, op: str, args: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]:
         setup = await self._ensure_setup()
         stem = new_call_stem()
         request_path = setup.work.wsl / f"req-{stem}.json"
@@ -291,7 +304,7 @@ class PowerShellBridge:
             )
             applying = args.get("apply") is True
             async with self._lock:
-                cold = await self._exchange(setup, stem, applying=applying)
+                cold = await self._exchange(setup, stem, applying=applying, timeout=timeout)
             data = self._read_response(response_path, applying=applying)
             log.info("%s %.0f ms%s", op, (time.monotonic() - started) * 1000, " (cold start)" if cold else "")
             return data
@@ -330,29 +343,33 @@ class PowerShellBridge:
         assert failure is not None
         await failure.settle_stderr()
         raise BridgeError(
-            f"OneNote bridge failed: {failure.stderr_since(mark) or 'powershell.exe is not accepting requests'}",
+            f"{self._app_name} bridge failed: "
+            f"{failure.stderr_since(mark) or 'powershell.exe is not accepting requests'}",
             "bridge_failed",
         )
 
-    async def _exchange(self, setup: _Setup, stem: str, *, applying: bool) -> bool:
+    async def _exchange(
+        self, setup: _Setup, stem: str, *, applying: bool, timeout: float | None = None
+    ) -> bool:
         """Send one stem and wait for its done line. Returns whether a worker had to be started."""
         worker, mark, cold = await self._send(setup, stem)
+        limit = self._timeout if timeout is None else timeout
 
         try:
-            async with asyncio.timeout(self._timeout):
+            async with asyncio.timeout(limit):
                 await self._wait_done(worker, stem)
         except TimeoutError:
             self._drop(worker)
             if applying:
                 raise BridgeError(
-                    "The call timed out while a write was in flight, so whether OneNote applied it is "
-                    "unknown. OneNote may be showing a sign-in or update dialog, or be hung. "
-                    "Read the page again and preview before retrying.",
+                    f"The call timed out while a write was in flight, so whether {self._app_name} applied it is "
+                    f"unknown. {self._app_name} may be showing a sign-in or update dialog, or be hung. "
+                    f"Read the {self._target_name} again and preview before retrying.",
                     "outcome_unknown",
                 ) from None
             raise BridgeError(
-                f"OneNote bridge failed: powershell.exe did not finish within {self._timeout:g} s "
-                "(OneNote may be showing a sign-in or update dialog, or be hung)",
+                f"{self._app_name} bridge failed: powershell.exe did not finish within {limit:g} s "
+                f"({self._app_name} may be showing a sign-in or update dialog, or be hung)",
                 "bridge_failed",
             ) from None
         except _WorkerGone:
@@ -360,24 +377,25 @@ class PowerShellBridge:
             await worker.settle_stderr()
             if applying:
                 raise BridgeError(
-                    "powershell.exe exited while a write was in flight, so whether OneNote applied it is "
-                    "unknown. Read the page again and preview before retrying.",
+                    f"powershell.exe exited while a write was in flight, so whether {self._app_name} applied it is "
+                    f"unknown. Read the {self._target_name} again and preview before retrying.",
                     "outcome_unknown",
                 ) from None
             detail = worker.stderr_since(mark)
             raise BridgeError(
-                f"OneNote bridge failed: {detail or 'powershell.exe exited during the call'}", "bridge_failed"
+                f"{self._app_name} bridge failed: {detail or 'powershell.exe exited during the call'}",
+                "bridge_failed",
             ) from None
         except ValueError:
             self._drop(worker)
             if applying:
                 raise BridgeError(
-                    "powershell.exe wrote an over-long line while a write was in flight, so whether OneNote "
-                    "applied it is unknown. Read the page again and preview before retrying.",
+                    f"powershell.exe wrote an over-long line while a write was in flight, so whether {self._app_name} "
+                    f"applied it is unknown. Read the {self._target_name} again and preview before retrying.",
                     "outcome_unknown",
                 ) from None
             raise BridgeError(
-                "OneNote bridge failed: powershell.exe wrote an over-long line", "bridge_failed"
+                f"{self._app_name} bridge failed: powershell.exe wrote an over-long line", "bridge_failed"
             ) from None
         except BaseException:
             # Includes cancellation by the client: the worker may be mid-call, so it cannot be reused.
@@ -439,8 +457,8 @@ class PowerShellBridge:
             except TimeoutError:
                 worker.discard()
                 raise BridgeError(
-                    f"OneNote bridge failed: powershell.exe was not ready within {self._startup_timeout:g} s"
-                    + self._tail(worker),
+                    f"{self._app_name} bridge failed: powershell.exe was not ready within "
+                    f"{self._startup_timeout:g} s" + self._tail(worker),
                     "bridge_failed",
                 ) from None
             except _WorkerGone:
@@ -448,7 +466,8 @@ class PowerShellBridge:
                 await worker.settle_stderr()
                 worker.discard()
                 raise BridgeError(
-                    "OneNote bridge failed: powershell.exe exited during start-up" + self._tail(worker),
+                    f"{self._app_name} bridge failed: powershell.exe exited during start-up"
+                    + self._tail(worker),
                     "bridge_failed",
                 ) from None
             except BaseException:
@@ -469,8 +488,7 @@ class PowerShellBridge:
         detail = worker.stderr_since(0)
         return f": {detail}" if detail else ""
 
-    @staticmethod
-    async def _wait_ready(worker: _Worker) -> None:
+    async def _wait_ready(self, worker: _Worker) -> None:
         assert worker.proc.stdout is not None
         while True:
             line = await worker.proc.stdout.readline()
@@ -480,7 +498,8 @@ class PowerShellBridge:
             if len(parts) == 3 and parts[0] == "deskhand-ready":
                 if parts[1] != PROTOCOL_VERSION:
                     raise BridgeError(
-                        f"OneNote bridge failed: bridge protocol {parts[1]} does not match {PROTOCOL_VERSION}",
+                        f"{self._app_name} bridge failed: bridge protocol {parts[1]} does not match "
+                        f"{PROTOCOL_VERSION}",
                         "bridge_failed",
                     )
                 worker.windows_pid = int(parts[2]) if parts[2].isdigit() else 0
@@ -526,36 +545,41 @@ class PowerShellBridge:
         pending = list(self._stopping)
         if worker is not None:
             try:
-                await asyncio.wait_for(worker.stop(CLOSE_GRACE_S), CLOSE_GRACE_S + 1)
+                await asyncio.wait_for(worker.stop(self._close_grace), self._close_grace + 1)
             except BaseException:
                 worker.discard()
                 raise
         if pending:
-            await asyncio.wait(pending, timeout=CLOSE_GRACE_S)
+            await asyncio.wait(pending, timeout=self._close_grace)
 
-    @staticmethod
-    def _read_response(response_path: Path, *, applying: bool) -> dict[str, Any]:
+    def _read_response(self, response_path: Path, *, applying: bool) -> dict[str, Any]:
         try:
             parsed = json.loads(response_path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             # A write that left no readable answer may still have landed, so it must not read as a plain failure.
             if applying:
                 raise BridgeError(
-                    "OneNote bridge produced no readable response for a write, so whether OneNote applied it "
-                    "is unknown. Read the page again and preview before retrying.",
+                    f"{self._app_name} bridge produced no readable response for a write, so whether "
+                    f"{self._app_name} applied it "
+                    f"is unknown. Read the {self._target_name} again and preview before retrying.",
                     "outcome_unknown",
                 ) from None
             raise BridgeError(
-                "OneNote bridge produced no response; the bridge script may have failed before it "
+                f"{self._app_name} bridge produced no response; the bridge script may have failed before it "
                 "could report an error",
                 "no_response",
             ) from None
         if not isinstance(parsed, dict) or "ok" not in parsed:
-            raise _malformed_response(applying)
+            raise _malformed_response(applying, self._app_name, self._target_name)
         if not parsed.get("ok"):
             code = parsed.get("code") or "error"
-            raise BridgeError(f"OneNote {code}: {parsed.get('error')}", code)
+            details = parsed.get("data")
+            raise BridgeError(
+                f"{self._app_name} {code}: {parsed.get('error')}",
+                code,
+                details if isinstance(details, dict) else None,
+            )
         data = parsed.get("data")
         if not isinstance(data, dict):
-            raise _malformed_response(applying)
+            raise _malformed_response(applying, self._app_name, self._target_name)
         return data

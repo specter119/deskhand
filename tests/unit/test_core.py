@@ -7,7 +7,7 @@ from mcp import Client
 from mcp.types import ToolAnnotations
 
 from deskhand.core.apply_token import TokenError, TokenTable, hash_request, stable_stringify
-from deskhand.core.powershell import new_call_stem
+from deskhand.core.powershell import BridgeError, new_call_stem
 from deskhand.core.server import ToolOutput, ToolSpec, build_server
 
 pytestmark = pytest.mark.anyio
@@ -80,3 +80,24 @@ async def test_output_validation_after_a_write_says_the_call_had_returned(status
     text = text_of(result)
     assert "Output validation error" in text
     assert ("read the page before retrying" in text) == (status == "applied")
+
+
+async def test_a_bridge_error_can_carry_structured_details():
+    async def run(_: dict[str, object]) -> ToolOutput:
+        raise BridgeError("PowerPoint partial: shape 3 failed", "applied_unverified", {"appliedCount": 2})
+
+    spec = ToolSpec(
+        name="w",
+        title="W",
+        description="w",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        annotations=ToolAnnotations(read_only_hint=False),
+        run=run,
+    )
+    async with Client(build_server("t", "1", "i", [spec]), mode="legacy") as client:
+        result = await client.call_tool("w", {})
+    assert result.is_error is True
+    assert result.structured_content == {
+        "error": {"code": "applied_unverified", "details": {"appliedCount": 2}}
+    }

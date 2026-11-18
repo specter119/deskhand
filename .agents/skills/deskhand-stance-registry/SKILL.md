@@ -51,8 +51,12 @@ incomplete.
 - `src/deskhand/onenote/bridge.ps1` — fingerprint scope and error classification
 - `src/deskhand/onenote/tools.py` — preview composition, caps and the tool surface
 - `src/deskhand/onenote/schemas.py` — the advertised input and output schemas
-- `tests/parity/fixtures/tools.json` — the advertised contract a client sees
+- `src/deskhand/ppt/bridge.ps1` — fingerprint scope, window handling and error classification
+- `src/deskhand/ppt/tools.py` — preview composition, caps and the PPT tool surface
+- `src/deskhand/ppt/schemas.py` — the advertised PPT input and output schemas
+- `tests/parity/fixtures/<app>/tools.json` — the advertised contract a client sees, per app
 - `src/deskhand/onenote/AGENTS.md` — the mechanism the stances constrain
+- `src/deskhand/ppt/AGENTS.md` — the PowerPoint mechanism the stances constrain
 - `docs/stance-map.md` — the stake map and the deferred axes
 
 ## Resolved without escalation
@@ -72,6 +76,7 @@ Designs that served both sides of a pair. Recorded so the next pass does not rel
 | Conflict | Pair | Status | Decision record |
 | -------- | ---- | ------ | --------------- |
 | a concurrent edit between the fingerprint check and `UpdatePageContent` is overwritten, so `applied` does not imply no lost update | `deskhand-write-integrity-stance` vs `deskhand-contract-continuity-stance` | measured-not-adopted: the window is reproduced live; `lastModifiedTime` has one-second granularity and can lag, so it cannot close it | pass 3; `src/deskhand/onenote/AGENTS.md#concurrency` |
+| a PowerPoint chart requires a presentation window, so `add_chart` leaves a minimized taskbar entry | `deskhand-quiet-desktop-stance` vs `deskhand-hot-latency-stance` | open: `Series.Values` works without Excel, but the chart object still needs a window; `Ensure-ChartWindow` minimizes and never hides it | pass 4; `src/deskhand/ppt/AGENTS.md#bridgeps1` |
 
 ## Decisions that sacrificed a stance
 
@@ -81,6 +86,7 @@ Designs that served both sides of a pair. Recorded so the next pass does not rel
 | `7255575` | `deskhand-contract-continuity-stance` | the advertised schemas stayed byte-identical to the TypeScript record     | a real page had to match an existing series                |
 | `8c5b822` | `deskhand-quiet-desktop-stance`       | no process on the desktop between calls                                   | 0.9 s per call and a `0x800706BF` race were worse          |
 | this change (2026-11-16) | `deskhand-write-integrity-stance` | "applied" no longer implies that no concurrent edit was lost | the check and the COM write cannot be one atomic step; a CAS was measured and rejected (granularity and lag) |
+| this change (2026-11-17) | `deskhand-write-integrity-stance` | `render(overwrite=true)` replaces output files without a preview or token | `render` is an explicit export to a caller-named directory; the deck is untouched and the tool is advertised destructive |
 
 ## Deferred axes
 
@@ -91,6 +97,10 @@ Recorded here so a later pass does not forge them from memory.
 | change granularity vs confirmation budget (`S1` vs `S12`) | the `batch` change lands | control is the batch diff: one token for a group, per-change fingerprints, same-outline pairs refused |
 | client timeout vs slow writes (`S7`) | a second client with a different default timeout, or a request to support an op over 40 s | currently a one-way decision (`6d4d223`) |
 | one shared core vs per-app servers (`S11`) | a second `src/deskhand/<app>/` exists | `quiet-desktop` would then compete across applications, not only for OneNote |
+| change granularity vs confirmation budget (`S1` vs `S12`), PPT | a PPT `batch` lands | 17 separate tools mean 15 confirmations for a 15-element deck; a batch must keep per-op fingerprints and `applied_unverified` |
+| cell and series editing (`S12`) | a caller needs to change one table cell or one chart series | today the only path is `delete_shape` plus `add_table`/`add_chart`, which changes the shape id |
+| PPT reply transcript (`S3`) | the next intentional wording change | the tool list, instructions and reply shapes are pinned; a full transcript waits until the caps and target-shape rule stop moving |
+| client exit with an open deck, and SIGKILL (`S5`/`S6`) | a live run with a deck left open at exit, or a killed server | the live suite compares process counts but closes the deck first; the PPT 15 s close grace is untested against a large deck |
 
 ## Evidence
 
@@ -116,6 +126,22 @@ output: write-integrity, preview-legibility, contract-continuity, edit-expressiv
 | 1    | `09464eb` | integrity vs legibility, continuity vs expressiveness, and a map miss (legibility vs continuity) | 4 findings, all merged by sequencing; no escalation |
 | 2    | `fc1ac784` | integrity vs legibility, continuity vs expressiveness, legibility vs continuity | 18 findings; 11 fixed, 3 accepted mechanism decisions, 4 deferred axes; no escalation |
 | 3    | `d10533cd` + uncommitted batch wording | integrity vs continuity, integrity vs expressiveness | 2 findings on the batch error text fixed; 1 mechanism limit documented and left open |
+| 4    | `ttmxrsmy` + uncommitted `ppt` app | integrity vs legibility, continuity vs expressiveness, legibility vs continuity, hot-latency vs quiet-desktop, and the S7/S11 activation axes | 38 findings; 31 fixed, 1 partial, 1 accepted mechanism decision, 3 deferred, 1 open conflict (chart window), 1 untested claim recorded; no escalation |
+
+Pass 4 binding (2026-11-17). Target: the uncommitted working copy `ttmxrsmy` (parent `abec8e28`),
+which adds `deskhand ppt` as the second app. Scope: `src/deskhand/ppt/**`, `src/deskhand/core/powershell.py`,
+`src/deskhand/cli.py`, `tests/unit/test_ppt.py`, `tests/unit/test_bridge_script.py`,
+`tests/unit/helpers.py`, `tests/parity/**`, `tests/live/ppt.py`, and
+`docs/ppt-capability-request.md`. Pairs in scope: write-integrity vs preview-legibility,
+contract-continuity vs edit-expressiveness, preview-legibility vs contract-continuity, and
+hot-latency vs quiet-desktop. The second app activates the deferred S11 axis (one shared core versus
+per-app servers), and the 55 s render ceiling activates S7 (client timeout versus slow writes); both
+are reviewed rather than assumed. Prior decisions constraining the pass: `1da5f3f` (one-screen
+previews and token first), `7255575` (a contract change is recorded and regenerated), `8c5b822` (a
+resident worker and long-lived COM object), pass 3's open conflict (`applied` does not imply no lost
+update), and the registry's deferred S7/S11 activation conditions. Reviewers: one per stance,
+independent, no shared output: write-integrity, preview-legibility, contract-continuity,
+edit-expressiveness, hot-latency, quiet-desktop.
 
 Pass 1 detail. Four independent reviewers, one stance each, no shared output. Findings:
 
@@ -243,6 +269,126 @@ text, so the model found what four prior stance passes had accepted. The dissolv
 that `outcome_unknown` and `applied_unverified` must stay distinct: the first has no evidence the
 write started, the second has a returned write call. Merging them would let one reply claim more than
 is known.
+
+Pass 4 detail. Six independent reviewers, one stance each, no shared output. The second app activates
+the deferred S11 axis (one shared core versus per-app servers) and the 55 s `render` ceiling activates
+S7 (client timeout versus slow writes). Findings, in the reviewer's words condensed to the claim:
+
+- W1 `write-integrity`, new: every write preview showed only a count or the target id, not the text,
+  cells, series, picture source, notes, or the content of a slide about to be deleted.
+- W2 `write-integrity`, new: `add_text` checked `align`/`anchor` after `AddTextbox`, `add_table`
+  checked `columnWidths` after the table existed, and `add_picture` checked `fit` after the picture
+  was added, so a dry run could promise a write that would fail halfway.
+- W3 `write-integrity`, new: `AddPicture` set `MUTATED` after the add, so an unknown `fit` was reported
+  as "Nothing was written" although the picture was already on the slide.
+- W4 `write-integrity`, new: `save_deck` and `close_deck` set `MUTATED` after `Save`/`SaveAs`, so a
+  `com_error` from a save that had already touched the target was reported as nothing written.
+- W5 `write-integrity`, new: the slide fingerprint covered geometry and notes only, so text, fill and
+  line edits made between preview and apply were overwritten.
+- W6 `write-integrity`, new: the deck fingerprint covered slide count and ids only, so `delete_slide`
+  and `close_deck discard=true` could destroy content changed after the preview.
+- W7 `write-integrity`, new: `save_deck` bound only the target file, not the in-memory deck, so a
+  changed deck could be written under an unchanged file fingerprint.
+- W8 `write-integrity`, new: a post-apply response without a fingerprint was replaced with the preview
+  fingerprint and still reported `applied`.
+- W9 `write-integrity`, new: `fit=cover` swallowed `PictureFormat.Crop*` failures and chart option
+  failures, then reported `applied`.
+- W10 `write-integrity`, new: `render(overwrite=true)` replaces files with no preview or token while
+  advertised as non-destructive.
+- P1 `preview-legibility`, new: a dry-run listed every shape with no cap; a 60-shape slide was 63
+  lines and the changed shape was one unchanged-looking line among them.
+- P2 `preview-legibility`, new: `read_deck` printed every slide and every shape by default; 20 slides
+  x 6 shapes was 141 lines.
+- P3 `preview-legibility`, new: `render` listed every file with no cap; 40 files was 41 path lines.
+- P4 `preview-legibility`, new: `_short` cut at a Python code-point boundary, so the 90-character cap
+  was 183 UTF-16 units for emoji and could split a flag or a combining mark.
+- P5 `preview-legibility`, new: no test pinned the `applyToken` first line or any of the caps.
+- C1 `contract-continuity`, new: `AGENTS.md` still said only `onenote` existed and pointed at the
+  deleted `fixtures/tools.json`.
+- C2 `contract-continuity`, new: `advertised-tools-are-current` watched only OneNote sources and
+  diffed the deleted file, so it could not fail for PPT.
+- C3 `contract-continuity`, new: PPT tool replies had substring assertions only and no recorded text.
+- C4 `contract-continuity`, new: the request document named `valueAxisTitle` while an earlier draft of
+  the schema named `axisTitle`.
+- C5 `contract-continuity`, new: the fixture comparison was a subset check, so a new top-level tool
+  field would pass unnoticed.
+- C6 `contract-continuity`, new: the request document planned 9 tools in a first cut; the change
+  advertised 17 with no record of the merge.
+- E1 `edit-expressiveness`, new: a saved deck could only be opened read-only, so it could not be
+  edited and re-saved.
+- E2 `edit-expressiveness`, new: `update_shape` could only replace text wholesale, flattening runs.
+- E3 `edit-expressiveness`, seen before: `theme.accent` was hashed but not applied.
+- E4 `edit-expressiveness`, new: the shape model had no paragraphs and pictures had no intrinsic size.
+- E5 `edit-expressiveness`, seen before: no `batch`, so a 15-element deck needs 15 confirmations.
+- E6 `edit-expressiveness`, new: tables and charts were write-once; no cell or series update.
+- E7 `edit-expressiveness`, seen before: descriptions omitted optional fields and the output schema
+  omitted `table`/`chart`/`picture`/`notes`.
+- E8 `edit-expressiveness`, seen before: `render(format=pdf)` accepted `width`/`height` and ignored
+  them.
+- H1 `hot-latency`, new: the PPT live suite had no cold or hot latency gate.
+- H2 `hot-latency`, new: a 120 s `render` ceiling outlived the client's 60 s default, so a slow render
+  was cancelled and its worker killed.
+- H3 `hot-latency`, new: `Get-Ppt` never checked that the cached COM object was alive.
+- H4 `hot-latency`, new (hypothesis): `render(format=pdf)` used `SaveAs`, which changes the open
+  presentation's path, so later path lookups miss and reopen it.
+- Q1 `quiet-desktop`, seen before: the chart path creates a visible window and only minimizes it.
+- Q2 `quiet-desktop`, seen before: process ownership was sampled when the worker loaded, not when
+  PowerPoint was actually started.
+- Q3 `quiet-desktop`, new: the live suite never checked that a client exit leaves no worker or
+  PowerPoint behind, and had no SIGKILL case.
+- Q4 `quiet-desktop`, new: the 2 s close grace may kill the worker before `Reset-Ppt` finishes closing
+  a deck.
+- Q5 `quiet-desktop`, seen before: the request document carried a person's name and internal project
+  and tool names into the repository.
+
+Contest and classification. P1 contests W1: showing the content of every shape in a preview would
+restore the 63-line reply P1 rejected. W1's claim survived only where the content is the thing being
+approved, and the merge is: the preview shows what the request will write (the summary line) plus a
+five-shape list that always includes the target shape, with the full model in `structuredContent`.
+P2 contests W6/E4: a default deck overview is shorter but hides shapes. The merge is a one-line
+overview by default and expansion only for the slides the caller names. H2 contests E5: a 55 s ceiling
+forces callers to split a large render into batches, which is the granularity E5 already wanted. Q1 is
+incompatible with itself rather than with another stance: PowerPoint charts require a presentation
+window, and the only alternative measured so far (an Excel-backed chart workbook) starts Excel and
+fails without a window. It stays an open conflict. C3's full reply transcript is deferred: pinning the
+first text before the caps and target-shape rule settled would freeze a reply that was still moving;
+the tool list, instructions and every reply shape are pinned now, and the transcript is the next
+contract change. W10 is accepted as a decision: `render` is an explicit export to a caller-named
+`outDir`, so it is advertised destructive and refuses an existing file unless `overwrite=true`; it does
+not use a token, because it does not touch the deck. H4 stays a hypothesis until measured live; the
+implementation uses `SaveCopyAs`, and the live suite now asserts the deck's path is unchanged after a
+PDF render. C6 is resolved by recording the merge in the request document rather than splitting the
+change.
+
+Outcome. Fixed in this change: W1 (summaries carry the content and `delete_slide` previews the slide;
+`save_deck`/`close_deck` still show the presentation state rather than every unsaved shape, so this one
+is partial),
+W2/W3 (every request-level check runs before the first mutation; `MUTATED` is set before
+`AddPicture`), W4/W7 (saving sets `MUTATED` before `Save`/`SaveAs`, and the fingerprint covers both the
+file and the deck), W5/W6 (shape and deck fingerprints cover text, fill, line, tables, charts, linked
+picture sources and notes), W8 (a missing post-apply fingerprint is `outcome_unknown`), W9 (crop and chart option
+failures are no longer swallowed), P1-P4 (five shapes, a target shape always shown, a one-line deck
+overview, five render paths, UTF-16 and grapheme-aware truncation), P5 (tests pin the token-first
+lines and the caps), C1/C2/C4/C5/C6 (root `AGENTS.md`, the two-app hook, `valueAxisTitle`, a strict
+fixture comparison, and the 17-tool record), E1 (a read-only open is closed and reopened editable for
+a write), E2/E4 (paragraphs on `update_shape` and in the shape model, picture size), E3 (accent is the
+default series and table-header color), E7/E8 (descriptions and output schema; PDF sizing is refused),
+H1-H3 (a live latency gate, a 55 s ceiling, and a live COM object that is checked and rebuilt), and
+Q2/Q4/Q5 (ownership is sampled when PowerPoint is started; the PPT server gives `Reset-Ppt` a 15 s
+close grace; the request document is de-identified).
+Deferred: E5 (`batch`), E6 (cell and series update), and C3 (a full PPT reply transcript). Accepted:
+W10 (`render` overwrite is destructive but untokened). Open: Q1 (the chart window is minimized, not
+hidden). Q3 is recorded as untested: the live suite compares the PowerPoint process count before and
+after, but it closes the deck first and does not exercise a client exit with a deck open or a SIGKILL.
+Q4's 15 s grace is therefore implemented but not exercised by a live exit-with-open-deck case. H4 was
+fixed in implementation and is verified by the live path assertion, not by a dedicated measurement.
+
+Counterexamples harvested. The reviewer's first pass read the bridge before the Python layer and
+reported the read-only reopen and the fingerprint scope as missing; both had been added, which shows a
+reviewer must be given the working copy, not an earlier diff. The `applyToken` ordering was already
+right and had no test: P5 is the clean example of a stance finding a convention held only by memory.
+Q1 is the one finding no amount of code can dissolve: a chart needs a window, so the quiet-desktop
+objective is paid for with a minimized taskbar entry.
 
 ## Operational notes
 

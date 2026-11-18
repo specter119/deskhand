@@ -60,8 +60,16 @@ def _first_error(validator: Validator, value: Any) -> str | None:
     return message[:MAX_VALIDATION_MESSAGE]
 
 
-def _failure(message: str) -> CallToolResult:
-    return CallToolResult(content=[TextContent(text=message)], is_error=True)
+def _failure(
+    message: str, *, code: str | None = None, details: dict[str, Any] | None = None
+) -> CallToolResult:
+    structured = {"error": {"code": code or "error", "details": details}} if details is not None else None
+    return CallToolResult(content=[TextContent(text=message)], is_error=True, structured_content=structured)
+
+
+def output_problem(schema: dict[str, Any], value: Any) -> str | None:
+    """The same check `build_server` applies, exposed for a write that must know before it returns."""
+    return _first_error(Draft202012Validator(schema), value)
 
 
 def build_server(
@@ -105,7 +113,13 @@ def build_server(
         try:
             output = await spec.run(arguments)
         except Exception as error:
-            return _failure(str(error) or type(error).__name__)
+            details = getattr(error, "details", None)
+            code = getattr(error, "code", None)
+            return _failure(
+                str(error) or type(error).__name__,
+                code=code if isinstance(code, str) else None,
+                details=details if isinstance(details, dict) else None,
+            )
 
         problem = _first_error(output_validators[spec.name], output.structured)
         if problem:

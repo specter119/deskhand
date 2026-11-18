@@ -11,6 +11,7 @@ from mcp.types import CallToolResult
 
 from deskhand.core.apply_token import TokenTable
 from deskhand.onenote.server import create_onenote_server
+from deskhand.ppt.server import create_ppt_server
 
 PAGE: dict[str, Any] = {
     "id": "page-1",
@@ -62,8 +63,10 @@ class FakeBridge:
         self.handlers = handlers or {}
         self.calls: list[dict[str, Any]] = []
 
-    async def __call__(self, op: str, args: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append({"op": op, "args": copy.deepcopy(args)})
+    async def __call__(
+        self, op: str, args: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]:
+        self.calls.append({"op": op, "args": copy.deepcopy(args), "timeout": timeout})
         handler = self.handlers.get(op)
         if handler is None:
             raise AssertionError(f"no fake handler for {op}")
@@ -97,6 +100,17 @@ async def connect(
     bridge = bridge or FakeBridge()
     tokens = tokens or TokenTable()
     server = create_onenote_server(bridge=bridge, tokens=tokens)
+    async with Client(server, mode="legacy") as client:
+        yield Connection(client, bridge, tokens)
+
+
+@asynccontextmanager
+async def connect_ppt(
+    bridge: FakeBridge | None = None, tokens: TokenTable | None = None
+) -> AsyncGenerator[Connection]:
+    bridge = bridge or FakeBridge()
+    tokens = tokens or TokenTable()
+    server = create_ppt_server(bridge=bridge, tokens=tokens)
     async with Client(server, mode="legacy") as client:
         yield Connection(client, bridge, tokens)
 

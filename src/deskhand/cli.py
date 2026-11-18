@@ -21,7 +21,13 @@ def _onenote() -> Server:
     return create_onenote_server()
 
 
-APPS: dict[str, Callable[[], Server]] = {"onenote": _onenote}
+def _ppt() -> Server:
+    from deskhand.ppt.server import create_ppt_server
+
+    return create_ppt_server()
+
+
+APPS: dict[str, Callable[[], Server]] = {"onenote": _onenote, "ppt": _ppt}
 
 
 def usage() -> str:

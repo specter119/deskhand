@@ -1,0 +1,4018 @@
+{
+  "instructions": "These tools drive the Windows PowerPoint desktop client through its COM automation interface, from WSL.\nThey read a deck's real geometry and text, add and change shapes on a 1280x720 px canvas by default,\nrender slides with PowerPoint itself, and save the result as .pptx.\nEvery length in the API is px at 96 dpi; PowerPoint's points are converted in the bridge.\nWrites are two-step: the first call previews and returns an applyToken and a fingerprint; the second\ncall repeats the arguments with dryRun=false, that applyToken, and that expectFingerprint. A changed\ndeck is refused rather than overwritten. Nothing is saved until save_deck is called.\nThe server only closes presentations it opened or created; it never quits a PowerPoint the user had\nalready running.",
+  "tools": [
+    {
+      "name": "presentations",
+      "title": "Open presentations",
+      "description": "List the presentations PowerPoint currently has open, with their canvas size and slide count.",
+      "inputSchema": {
+        "properties": {},
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "presentations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "slides": {
+                  "type": "number"
+                },
+                "widthPx": {
+                  "type": "number"
+                },
+                "heightPx": {
+                  "type": "number"
+                },
+                "saved": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "path",
+                "slides",
+                "widthPx",
+                "heightPx",
+                "saved"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "running",
+          "presentations"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "read_deck",
+      "title": "Read a deck",
+      "description": "Read a deck's slides, shapes, text, geometry in px at 96 dpi, tables, charts, pictures and notes. Omit slides for a one-line-per-slide overview; pass slides (for example \"1-3\") to expand shapes. A path is opened read-only; a write tool reopens it editable when it has no unsaved changes.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slides": {
+            "type": "string",
+            "description": "1-based slide selection, for example \"1-5\" or \"1,3,5\"."
+          },
+          "includeNotes": {
+            "type": "boolean",
+            "description": "Default false."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "number"
+                },
+                "layout": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "shapes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "number"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "w": {
+                        "type": "number"
+                      },
+                      "h": {
+                        "type": "number"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "paragraphs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {},
+                          "additionalProperties": true
+                        }
+                      },
+                      "table": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      },
+                      "chart": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      },
+                      "picture": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "type",
+                      "x",
+                      "y",
+                      "w",
+                      "h",
+                      "text"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "notes": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "index",
+                "layout",
+                "title",
+                "shapes"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          }
+        },
+        "required": [
+          "presentation",
+          "slides",
+          "fingerprintQuality"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "read_slide",
+      "title": "Read a slide",
+      "description": "Read one slide and its fingerprint. The fingerprint is what a write preview must still match.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "includeNotes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slide"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slide",
+          "fingerprintQuality"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "render",
+      "title": "Render slides",
+      "description": "Export slides as PNG files or the deck as a PDF, using PowerPoint's own renderer. outDir must be on a Windows drive. width/height apply to PNG; a PDF keeps the deck's page size. overwrite replaces existing files. The call ceiling is 55 s, so render large decks in slide batches.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slides": {
+            "type": "string",
+            "description": "1-based slide selection, PNG only."
+          },
+          "outDir": {
+            "type": "string",
+            "description": "Directory on a Windows drive, for example /mnt/c/Users/me/Temp/deck."
+          },
+          "width": {
+            "type": "number",
+            "description": "Output width in px for PNG; default 1600."
+          },
+          "height": {
+            "type": "number",
+            "description": "Output height in px for PNG; default 900."
+          },
+          "format": {
+            "type": "string",
+            "description": "png (default) or pdf."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Default false."
+          }
+        },
+        "required": [
+          "outDir"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "widthPx": {
+                  "type": "number"
+                },
+                "heightPx": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "path",
+                "widthPx",
+                "heightPx"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "elapsedMs": {
+            "type": "number"
+          },
+          "outDir": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "files",
+          "elapsedMs",
+          "outDir"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "create_deck",
+      "title": "Create a deck",
+      "description": "Create a new presentation on a 1280x720 px canvas by default. theme accepts background, text, accent and font. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Optional .pptx path on a Windows drive."
+          },
+          "width": {
+            "type": "number",
+            "description": "Canvas width in px; default 1280."
+          },
+          "height": {
+            "type": "number",
+            "description": "Canvas height in px; default 720."
+          },
+          "theme": {
+            "type": "object",
+            "properties": {
+              "background": {
+                "type": "string",
+                "description": "#RRGGBB"
+              },
+              "text": {
+                "type": "string",
+                "description": "#RRGGBB"
+              },
+              "accent": {
+                "type": "string",
+                "description": "#RRGGBB"
+              },
+              "font": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_slide",
+      "title": "Add a slide",
+      "description": "Add a slide with layout (blank, title, title-content, two-column, section), optional title, subtitle, position and background. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "layout": {
+            "type": "string",
+            "description": "blank (default), title, title-content, two-column or section."
+          },
+          "position": {
+            "type": "number",
+            "description": "1-based insertion position; default at the end."
+          },
+          "title": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "background": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_text",
+      "title": "Add a text box",
+      "description": "Add a text box with paragraphs and runs; positions and sizes are px at 96 dpi. Optional padding, anchor, fill and line. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "x": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "y": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "w": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "h": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "runs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      },
+                      "bold": {
+                        "type": "boolean"
+                      },
+                      "italic": {
+                        "type": "boolean"
+                      },
+                      "color": {
+                        "type": "string",
+                        "description": "#RRGGBB"
+                      },
+                      "size": {
+                        "type": "number",
+                        "description": "Font size in px at 96 dpi; at least 1 pt (1.34 px)."
+                      },
+                      "font": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Shorthand for a single run when runs is omitted."
+                },
+                "align": {
+                  "type": "string",
+                  "description": "left, center, right or justify."
+                },
+                "spaceBefore": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                },
+                "spaceAfter": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                },
+                "lineSpacing": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "padding": {
+            "type": "number",
+            "description": "px at 96 dpi, applied to all four sides."
+          },
+          "anchor": {
+            "type": "string",
+            "description": "top (default), middle or bottom."
+          },
+          "fill": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "line": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "x",
+          "y",
+          "w",
+          "h",
+          "paragraphs"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_table",
+      "title": "Add a table",
+      "description": "Add a table with an optional header row, columnWidths, headerFill, fontSize and headerFontSize. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "x": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "y": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "w": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "h": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "header": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "columnWidths": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "px at 96 dpi."
+            }
+          },
+          "headerFill": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "fontSize": {
+            "type": "number",
+            "description": "px at 96 dpi; at least 1 pt (1.34 px)."
+          },
+          "headerFontSize": {
+            "type": "number",
+            "description": "px at 96 dpi; at least 1 pt (1.34 px)."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "x",
+          "y",
+          "w",
+          "h",
+          "rows"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_chart",
+      "title": "Add a chart",
+      "description": "Add a column, bar, line or pie chart with categories, series and colors; optional title, legend, dataLabels, numberFormat and valueAxisTitle. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "description": "column, bar, line or pie."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#RRGGBB"
+                }
+              },
+              "required": [
+                "name",
+                "values"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "legend": {
+            "type": "boolean",
+            "description": "Default true."
+          },
+          "dataLabels": {
+            "type": "boolean",
+            "description": "Default false."
+          },
+          "numberFormat": {
+            "type": "string",
+            "description": "For example 0.0% or #,##0."
+          },
+          "valueAxisTitle": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "x",
+          "y",
+          "w",
+          "h",
+          "type",
+          "categories",
+          "series"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_picture",
+      "title": "Add a picture",
+      "description": "Add a picture from a Windows-drive path or base64 bytes; fit is stretch, contain or cover. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "x": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "y": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "w": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "h": {
+            "type": "number",
+            "description": "px at 96 dpi."
+          },
+          "path": {
+            "type": "string",
+            "description": "Image path on a Windows drive."
+          },
+          "dataBase64": {
+            "type": "string",
+            "description": "Image bytes as base64, when path is omitted."
+          },
+          "fit": {
+            "type": "string",
+            "description": "stretch (default), contain or cover."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "add_shapes",
+      "title": "Add several shapes",
+      "description": "Add up to 20 text, table or picture shapes to one slide in one preview and one apply; shapes are added in order. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "shapes": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "text"
+                    },
+                    "x": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "w": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "h": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "runs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "text": {
+                                  "type": "string"
+                                },
+                                "bold": {
+                                  "type": "boolean"
+                                },
+                                "italic": {
+                                  "type": "boolean"
+                                },
+                                "color": {
+                                  "type": "string",
+                                  "description": "#RRGGBB"
+                                },
+                                "size": {
+                                  "type": "number",
+                                  "description": "Font size in px at 96 dpi; at least 1 pt (1.34 px)."
+                                },
+                                "font": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "text"
+                              ],
+                              "additionalProperties": true
+                            }
+                          },
+                          "text": {
+                            "type": "string",
+                            "description": "Shorthand for a single run when runs is omitted."
+                          },
+                          "align": {
+                            "type": "string",
+                            "description": "left, center, right or justify."
+                          },
+                          "spaceBefore": {
+                            "type": "number",
+                            "description": "px at 96 dpi."
+                          },
+                          "spaceAfter": {
+                            "type": "number",
+                            "description": "px at 96 dpi."
+                          },
+                          "lineSpacing": {
+                            "type": "number",
+                            "description": "px at 96 dpi."
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "padding": {
+                      "type": "number",
+                      "description": "px at 96 dpi, applied to all four sides."
+                    },
+                    "anchor": {
+                      "type": "string",
+                      "description": "top (default), middle or bottom."
+                    },
+                    "fill": {
+                      "type": "string",
+                      "description": "#RRGGBB"
+                    },
+                    "line": {
+                      "type": "string",
+                      "description": "#RRGGBB"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "paragraphs"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "table"
+                    },
+                    "x": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "w": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "h": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "header": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "columnWidths": {
+                      "type": "array",
+                      "items": {
+                        "type": "number",
+                        "description": "px at 96 dpi."
+                      }
+                    },
+                    "headerFill": {
+                      "type": "string",
+                      "description": "#RRGGBB"
+                    },
+                    "fontSize": {
+                      "type": "number",
+                      "description": "px at 96 dpi; at least 1 pt (1.34 px)."
+                    },
+                    "headerFontSize": {
+                      "type": "number",
+                      "description": "px at 96 dpi; at least 1 pt (1.34 px)."
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "rows"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "picture"
+                    },
+                    "x": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "w": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "h": {
+                      "type": "number",
+                      "description": "px at 96 dpi."
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "Image path on a Windows drive."
+                    },
+                    "dataBase64": {
+                      "type": "string",
+                      "description": "Image bytes as base64, when path is omitted."
+                    },
+                    "fit": {
+                      "type": "string",
+                      "description": "stretch (default), contain or cover."
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "w",
+                    "h"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "One entry per shape, added in order."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "shapes"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "dry-run"
+              },
+              {
+                "type": "string",
+                "const": "applied"
+              }
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "shapeIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "appliedCount": {
+            "type": "number"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "status",
+          "applied",
+          "fingerprint",
+          "shapeIds",
+          "appliedCount"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "set_notes",
+      "title": "Set speaker notes",
+      "description": "Replace the speaker notes of one slide. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "text": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "text"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "update_shape",
+      "title": "Update a shape",
+      "description": "Move, resize, retext or recolor one shape by its id from read_deck. text is a plain-text shortcut; paragraphs keeps runs. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "shapeId": {
+            "type": "number",
+            "description": "Shape id from read_deck."
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "runs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      },
+                      "bold": {
+                        "type": "boolean"
+                      },
+                      "italic": {
+                        "type": "boolean"
+                      },
+                      "color": {
+                        "type": "string",
+                        "description": "#RRGGBB"
+                      },
+                      "size": {
+                        "type": "number",
+                        "description": "Font size in px at 96 dpi; at least 1 pt (1.34 px)."
+                      },
+                      "font": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Shorthand for a single run when runs is omitted."
+                },
+                "align": {
+                  "type": "string",
+                  "description": "left, center, right or justify."
+                },
+                "spaceBefore": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                },
+                "spaceAfter": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                },
+                "lineSpacing": {
+                  "type": "number",
+                  "description": "px at 96 dpi."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "fill": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "line": {
+            "type": "string",
+            "description": "#RRGGBB"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "shapeId"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_shape",
+      "title": "Delete a shape",
+      "description": "Delete one shape by its id from read_deck. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "shapeId": {
+            "type": "number",
+            "description": "Shape id from read_deck."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide",
+          "shapeId"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "move_slide",
+      "title": "Move a slide",
+      "description": "Move a slide to another 1-based position. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "from": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "to": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_slide",
+      "title": "Delete a slide",
+      "description": "Delete one slide. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "slide": {
+            "type": "number",
+            "description": "1-based slide index."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "slide"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_deck",
+      "title": "Save a deck",
+      "description": "Save the presentation as .pptx on a Windows drive; overwrite replaces an existing file. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "path": {
+            "type": "string",
+            "description": ".pptx path on a Windows drive."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Default false."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "close_deck",
+      "title": "Close a deck",
+      "description": "Close the presentation, discarding unsaved changes by default. Two steps: call it without dryRun first (nothing is written; the reply starts with an applyToken and a fingerprint), then call it again with the same arguments plus dryRun=false, that applyToken, and that expectFingerprint. A token is single use, expires after 10 minutes, and is bound to the exact arguments and to the deck state the preview saw.",
+      "inputSchema": {
+        "properties": {
+          "presentation": {
+            "type": "string",
+            "description": "Open presentation name or path. Omit when exactly one presentation is open."
+          },
+          "discard": {
+            "type": "boolean",
+            "description": "Default true: close without saving."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "Default true: preview only. Pass false, together with applyToken and expectFingerprint, to apply."
+          },
+          "applyToken": {
+            "type": "string",
+            "description": "The applyToken from the dry run of this same call. Required when dryRun is false."
+          },
+          "expectFingerprint": {
+            "type": "string",
+            "description": "The fingerprint from the dry run. Required when dryRun is false."
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "fingerprintQuality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "full"
+              },
+              {
+                "type": "string",
+                "const": "coarse"
+              },
+              {
+                "type": "string",
+                "const": "unavailable"
+              }
+            ]
+          },
+          "applyToken": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slides": {
+                "type": "number"
+              },
+              "widthPx": {
+                "type": "number"
+              },
+              "heightPx": {
+                "type": "number"
+              },
+              "saved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "slides",
+              "widthPx",
+              "heightPx",
+              "saved"
+            ],
+            "additionalProperties": true
+          },
+          "slide": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shapes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "w": {
+                      "type": "number"
+                    },
+                    "h": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "paragraphs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    },
+                    "table": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "chart": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "picture": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "type",
+                    "x",
+                    "y",
+                    "w",
+                    "h",
+                    "text"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "index",
+              "layout",
+              "title",
+              "shapes"
+            ],
+            "additionalProperties": true
+          },
+          "path": {
+            "type": "string"
+          },
+          "closed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "fingerprint"
+        ],
+        "type": "object",
+        "additionalProperties": true
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

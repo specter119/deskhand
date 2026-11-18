@@ -66,6 +66,9 @@ FAKE = textwrap.dedent(
             os._exit(3)
         elif behave == "error":
             respond({{"ok": False, "error": "no such page", "code": "not_found"}})
+        elif behave == "error_data":
+            respond({{"ok": False, "error": "shape 3 failed", "code": "applied_unverified",
+                      "data": {{"appliedCount": 2, "failedIndex": 3}}}})
         elif behave == "silent":
             pass
         elif behave == "garbled":
@@ -177,6 +180,15 @@ async def test_a_bridge_error_keeps_its_code_and_leaves_the_worker_usable(env):
     assert raised.value.code == "not_found"
     assert (await bridge("b", {}))["pid"] == first["pid"]
     assert env.leftovers() == []
+    await bridge.close()
+
+
+async def test_a_bridge_error_keeps_its_structured_details(env):
+    bridge = env.bridge()
+    with pytest.raises(BridgeError) as raised:
+        await bridge("read_page", {"behave": "error_data"})
+    assert raised.value.code == "applied_unverified"
+    assert raised.value.details == {"appliedCount": 2, "failedIndex": 3}
     await bridge.close()
 
 

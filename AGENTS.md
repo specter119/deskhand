@@ -1,7 +1,7 @@
 # deskhand
 
 MCP servers that drive live Windows desktop applications from WSL. One repository, one server per
-application, a small shared core. Only `onenote` exists today.
+application, a small shared core. `onenote` and `ppt` exist today.
 
 ## Layout
 
@@ -13,16 +13,21 @@ application, a small shared core. Only `onenote` exists today.
   - `schema.py`, `compat.py`: JSON Schema builders, and the JavaScript-compatible text and number helpers.
 - `src/deskhand/onenote/`: the OneNote server. Read `src/deskhand/onenote/AGENTS.md` before touching
   `bridge.ps1`.
+- `src/deskhand/ppt/`: the PowerPoint server. Read `src/deskhand/ppt/AGENTS.md` before touching
+  `bridge.ps1`.
 - `tests/unit/`: run with `uv run pytest`; fake bridge, in-memory MCP client, fake resident `powershell.exe`, no Windows.
-- `tests/parity/`: the scenario and the transcripts recorded from the TypeScript implementation (branch `ts`).
-  `test_parity.py` replays them; a wording change in a tool reply fails it on purpose. Regenerate the
-  fixtures only when the contract is meant to change. `fixtures/tools.json` is the advertised tool
-  list, written by `tests/parity/dump_tools.py`; it matched the TypeScript record until paragraph
-  formatting, the `after` anchor, `batch`, and removing a table by its `one:OE` id were added on
-  purpose.
-- `tests/live/`: real OneNote, run by hand after setting `notebook` in `~/.config/deskhand/live.toml`
-  (or `DESKHAND_LIVE_NOTEBOOK`).
-- `integrations/pi/`: the pi extension that asks before an apply runs. The root `package.json` makes
+- `tests/parity/`: the OneNote scenario and transcripts recorded from the TypeScript implementation
+  (branch `ts`). `test_parity.py` replays them; a wording change in a OneNote tool reply fails it on
+  purpose. Regenerate the fixtures only when the contract is meant to change. `fixtures/<app>/tools.json`
+  is the advertised tool list for that app, written by `tests/parity/dump_tools.py <app>`. The OneNote
+  list matched the TypeScript record until paragraph formatting, the `after` anchor, `batch`, and
+  removing a table by its `one:OE` id were added on purpose. The PPT list is the first record of that
+  app's contract; there is no TypeScript baseline to compare it with.
+- `tests/live/`: real applications, run by hand. `onenote.py` needs `notebook` in
+  `~/.config/deskhand/live.toml` (or `DESKHAND_LIVE_NOTEBOOK`); `ppt.py` needs the PowerPoint desktop
+  client and creates its own temporary deck.
+- `integrations/pi/`: the pi extension that asks before a OneNote apply runs. It does not yet know the
+  PPT tool names; PPT writes are still gated by the server-side token. The root `package.json` makes
   this repository installable as a pi package, so pi loads the extension from its clone of `master`;
   a change to the gate takes effect after it is pushed, not after it is saved.
 - Branch `ts` holds the frozen TypeScript implementation, with its own tests.
@@ -56,4 +61,5 @@ fixed: one stance per reviewer, reviewers work independently and never read each
 the orchestrator adjudicates and records the result in the registry. A conflict the user has not
 resolved is not averaged away.
 
-A stance is an objective; the mechanism it constrains stays in `src/deskhand/onenote/AGENTS.md`.
+A stance is an objective; the mechanism it constrains stays in the app's `AGENTS.md`
+(`src/deskhand/onenote/AGENTS.md` or `src/deskhand/ppt/AGENTS.md`).

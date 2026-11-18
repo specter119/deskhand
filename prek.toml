@@ -77,8 +77,8 @@ require_serial = true
 id = "advertised-tools-are-current"
 name = "tools.json is current"
 language = "system"
-entry = "bash -c 'uv run python tests/parity/dump_tools.py || exit 1; git diff --exit-code -- tests/parity/fixtures/tools.json || { echo \"fixtures/tools.json was regenerated; review and stage it\"; exit 1; }'"
-files = "^(src/deskhand/onenote/(schemas|tools|server)\\.py|tests/parity/dump_tools\\.py)$"
+entry = "bash -c 'for app in onenote ppt; do f=\"tests/parity/fixtures/$app/tools.json\"; before=$(sha256sum \"$f\" 2>/dev/null || true); uv run python tests/parity/dump_tools.py \"$app\" || exit 1; after=$(sha256sum \"$f\"); if [ \"$before\" != \"$after\" ]; then echo \"fixtures/$app/tools.json changed; review and stage it\"; exit 1; fi; done'"
+files = "^(src/deskhand/(onenote|ppt)/(schemas|tools|server)\\.py|tests/parity/dump_tools\\.py)$"
 pass_filenames = false
 require_serial = true
 
